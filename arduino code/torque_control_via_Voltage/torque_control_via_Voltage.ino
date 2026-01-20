@@ -49,8 +49,8 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
 
-    motor.loopFOC();
-    motor.move(target_val);
+  motor.loopFOC();
+  motor.move(target_val);
   command.run();
   
 }

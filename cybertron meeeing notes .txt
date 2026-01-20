@@ -1,0 +1,23 @@
+Cybertron meeting(2/1/2025)
+add barrier behind belt
+suction cup(yoyo do research on motor and cup, Jiaxin mention got some one in bilibili said motor burn when using,suspect the motor is for water pump instead of profesional air pump)
+
+Telescopic arm	- still on going design, 2inch screw needed, need to explain on design to use shorter screw.
+no update on walking mechanism (might need to swap design due to long design time). chris and yoyo
+gripper 1 update	- try to copy a mehcanism,using servo still in design
+gripper 2 update	- using pneumatic. still in design,another design like a º”Ãÿ¡÷
+owen deside try on lift or stand.
+swerve drive update	- done design on the wheel hub but still no idea on turning mechanism.can use tapper bearing as the turning bearing, probally use aluminium block found in lab make as body.
+
+next week physical meeting, junior suggest the time.
+
+next time before meeting need to ask them ready to present 
+
+Cybertron meeting(7/1/2025)
+1. try to seprate walking mechanism to chunk
+2. gripper finalise by this week friday.
+3. friday bring together owen to wood shop
+4. connector of pipe need to done by this week.
+5. ramp and platform done by jan
+6. feb start to feb.
+7. 
