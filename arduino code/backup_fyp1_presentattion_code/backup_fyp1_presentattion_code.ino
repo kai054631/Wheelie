@@ -1,6 +1,6 @@
 /*description
 author :Yong Sheng Kai
-Last modify date: 25/1/2026
+Last modify date: 21/1/2026
 Arduino UNO
 MT6701 encoder
 MG995 Servo
@@ -14,19 +14,16 @@ MPU6050
 #include <Servo.h>
 
 MPU6050 mpu(Wire);
-float compAngleY = 0;  // The filtered result
-unsigned long lastFilterTime = 0;
-const float alpha = 0.99;  // Filter coefficient
 //Encoder Setup
 Encoder sensor = Encoder(2, 3, 1024);
 unsigned long lastMillis = 0;
-const long interval = 200;
+const long interval = 100;
 int count = 0;         //ppr count
 float RPS = 0.0;       //wheel speed
 bool ledstate = true;  // led on board to let user know if the program is freeze or not
 //pid calculate
 float error = 0.0, errorsum = 0.0, fpidout = 0.0;
-float Kp = 2.0,
+float Kp = 1.0,
       Ki = 0.0,
       Kd = 0.0;
 float fsetval = 0.0;  //set angle for motor
@@ -51,7 +48,6 @@ void setServoAngle(int state) {
       servoL.attach(ServoPin);
       //servoL.write(60);
       servoL.writeMicroseconds(1600);  //stand up
-
       break;
     case 1:
       servoL.attach(ServoPin);
@@ -59,22 +55,8 @@ void setServoAngle(int state) {
       servoL.writeMicroseconds(1200);  //squad down 120degree
       break;
     default:
-      servoL.detach();
       break;
   }
-}
-void applyComplementaryFilter() {
-  unsigned long currentTime = micros();
-  float dt = (currentTime - lastFilterTime) / 1000000.0;  // Convert to seconds
-  lastFilterTime = currentTime;
-
-  // 1. Get raw data from MPU6050_light
-  mpu.update();
-  float gyroRateY = mpu.getGyroY();        // Degrees per second
-  float accelAngleY = mpu.getAccAngleY();  // Angle based on gravity
-
-  // 2. The Complementary Filter Math
-  compAngleY = alpha * (compAngleY + gyroRateY * dt) + (1.0 - alpha) * accelAngleY;
 }
 
 
@@ -132,12 +114,12 @@ void setup() {
   motor.PID_velocity.D = 0.0;
   motor.LPF_velocity.Tf = 0.05;
   motor.voltage_sensor_align = 5;  // aligning voltage [V]
-  motor.voltage_limit = 4.0;
+  motor.voltage_limit = 5;
   motor.controller = MotionControlType::velocity;  //(velocity,torque,angle)
   motor.velocity_limit = 10;
 
-  //motor.useMonitoring(Serial);
-  //SimpleFOCDebug::enable(&Serial);
+  motor.useMonitoring(Serial);
+  SimpleFOCDebug::enable(&Serial);
   motor.init();
   motor.initFOC();
 
@@ -147,28 +129,42 @@ void setup() {
 }
 
 void loop() {
-  unsigned int currentAngle=mpu.getAngleY();
-  mpu.update();
-  if (Serial.available() > 0) {
+  // put your main code here, to run repeatedly:
+  motor.loopFOC();
+  motor.move(target_velocity);
+  if (Serial.available()) {
+    char a = Serial.read();
     int val = Serial.parseInt();
-    setServoAngle(val);
-  } 
-    motor.loopFOC();  // Keep FOC running
-    motor.move(pidformotor());
-  
+    if (a == 'S' || a == 's') {  //control servo to let robot squad down or stand up
+      setServoAngle(val);
+    }
+    if (a == 'M' || a == 'm') {  //control servo to let robot squad down or stand up
+      target_velocity = val * 6.28;
+
+      //Serial.print(target_velocity);
+    }
+  }
   unsigned long currentmillis = millis();
   if (currentmillis - lastMillis >= interval) {
     lastMillis = currentmillis;
 
-    // We use simple labels to avoid buffer overflow
-    Serial.print("A:");
-    Serial.print(currentAngle);
-    Serial.print("\tT:");
-    Serial.print(pidformotor());
-    Serial.print("\tV:");
-    Serial.println(motor.shaft_velocity);
+    ledstate = !ledstate;        //Invert LED state
+    digitalWrite(13, ledstate);  //led onboard
+    Serial.print("RPS:");
+    Serial.print(motor.shaft_velocity / 6.28);  //encoder count for motor
+    Serial.print(",");
+    Serial.print("angle:");
+    Serial.println(mpu.getAngleY());
 
-    // Flash LED
-    digitalWrite(13, !digitalRead(13));
+    // Serial.print(",");
+    // Serial.print("Error:");
+    // Serial.print(error);  //error between angle set and current angle of robot
+    // Serial.print(",");
+    // Serial.print("Total Error:");
+    // Serial.print(errorsum);  //sum of error between angle set and current angle of robot
+    // Serial.print(",");
+    // Serial.print("Motor PWM:");
+    // Serial.print(pidformotor());  //value to motor for balance back the robot
+    //Serial.print(",");
   }
 }

@@ -26,7 +26,7 @@ float RPS = 0.0;       //wheel speed
 bool ledstate = true;  // led on board to let user know if the program is freeze or not
 //pid calculate
 float error = 0.0, errorsum = 0.0, fpidout = 0.0;
-float Kp = 2.0,
+float Kp = 1.0,
       Ki = 0.0,
       Kd = 0.0;
 float fsetval = 0.0;  //set angle for motor
@@ -51,7 +51,6 @@ void setServoAngle(int state) {
       servoL.attach(ServoPin);
       //servoL.write(60);
       servoL.writeMicroseconds(1600);  //stand up
-
       break;
     case 1:
       servoL.attach(ServoPin);
@@ -59,7 +58,6 @@ void setServoAngle(int state) {
       servoL.writeMicroseconds(1200);  //squad down 120degree
       break;
     default:
-      servoL.detach();
       break;
   }
 }
@@ -147,26 +145,28 @@ void setup() {
 }
 
 void loop() {
-  unsigned int currentAngle=mpu.getAngleY();
+  motor.loopFOC(); // Keep FOC running
   mpu.update();
-  if (Serial.available() > 0) {
-    int val = Serial.parseInt();
+  if(Serial.available()>0){
+    int val=Serial.parseInt();
     setServoAngle(val);
-  } 
-    motor.loopFOC();  // Keep FOC running
-    motor.move(pidformotor());
+  }
+  float currentAngle = mpu.getAngleY();
   
+  // Simple logic to see if values change
+  target_velocity = (abs(currentAngle) > 1.0) ? (currentAngle * -1.0) : 0;
+  target_velocity = constrain(target_velocity, -20, 20);
+  
+  motor.move(target_velocity);
+
   unsigned long currentmillis = millis();
   if (currentmillis - lastMillis >= interval) {
     lastMillis = currentmillis;
 
     // We use simple labels to avoid buffer overflow
-    Serial.print("A:");
-    Serial.print(currentAngle);
-    Serial.print("\tT:");
-    Serial.print(pidformotor());
-    Serial.print("\tV:");
-    Serial.println(motor.shaft_velocity);
+    Serial.print("A:"); Serial.print(currentAngle);
+    Serial.print("\tT:"); Serial.print(target_velocity);
+    Serial.print("\tV:"); Serial.println(motor.shaft_velocity);
 
     // Flash LED
     digitalWrite(13, !digitalRead(13));
