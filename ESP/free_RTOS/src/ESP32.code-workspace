@@ -1,0 +1,28 @@
+{
+	"folders": [
+		{
+			"path": "../../../../ESP32"
+		},
+		{
+			"name": "FIrst_Project_Under_Linux",
+			"path": "../../FIrst_Project_Under_Linux"
+		},
+		{
+			"name": "second_project",
+			"path": "../../second_project"
+		},
+		{
+			"name": "AnalogInput",
+			"path": "../../AnalogInput"
+		},
+		{
+			"name": "free_RTOS",
+			"path": ".."
+		},
+		{
+			"name": "Servo_Function_Test",
+			"path": "../../Servo_Function_Test"
+		}
+	],
+	"settings": {}
+}
