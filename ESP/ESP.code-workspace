@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "ESP_SimpleFOC",
+			"path": "ESP_SimpleFOC"
+		},
+		{
+			"name": "ESP_MPU6050_DRIVEN_TEST",
+			"path": "ESP_MPU6050_DRIVEN_TEST"
+		},
+		{
+			"name": "Wheelie",
+			"path": "../../Documents/PlatformIO/Projects/Wheelie"
+		}
+	],
+	"settings": {}
+}
