@@ -65,6 +65,36 @@ void loop() {
 }
 
 // put function definitions here:
-// int myFunction(int x, int y) {
-//   return x + y;
-// }
+
+void TaskMotorCode(void *pvParameters)
+{
+  for (;;)
+  {
+    // printf("core foc working\n");
+    motorR.loopFOC();
+    motorR.move(0.5); // 在这里执行你的 PID 平衡逻辑
+
+    // 更新全局变量以便 Core 0 读取
+    current_velocity = motorR.shaftVelocity();
+    current_angle = motorR.shaftAngle();
+
+    vTaskDelay(1 / portTICK_PERIOD_MS); // 微小延时，让出 CPU
+  }
+}
+
+void TaskBalanceCode(void *pvParameters)
+{
+  for (;;)
+  {
+    float RobotAngle=mpu.getA
+  }
+}
+void TaskMonitorCode(void *pvParameters)
+{
+  for (;;)
+  {
+    // printf("core balancing working");
+    printf("Vel: %.2f | Angle: %.2f\n", current_velocity, current_angle);
+    vTaskDelay(100 / portTICK_PERIOD_MS); // 100ms 打印一次
+  }
+}

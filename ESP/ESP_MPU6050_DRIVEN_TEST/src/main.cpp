@@ -3,8 +3,8 @@
 #include <MPU6050_light.h>
 
 // Explicitly define pins to avoid conflicts with your SimpleFOC driver
-#define I2C_SDA 9
-#define I2C_SCL 8
+#define I2C_SDA 2
+#define I2C_SCL 1
 
 MPU6050 mpu(Wire);
 unsigned long timer = 0;
