@@ -1,0 +1,32 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "Wheelie",
+			"path": "../Documents/PlatformIO/Projects/Wheelie"
+		},
+		{
+			"name": "ESP_MPU6050_DRIVEN_TEST",
+			"path": "ESP/ESP_MPU6050_DRIVEN_TEST"
+		},
+		{
+			"name": "encoder_test",
+			"path": "../Documents/PlatformIO/Projects/encoder_test"
+		},
+		{
+			"name": "encoder_test",
+			"path": "ESP/encoder_test"
+		},
+		{
+			"name": "wheelie_test_code",
+			"path": "ESP/wheelie_test_code"
+		},
+		{
+			"name": "test",
+			"path": "../Documents/PlatformIO/Projects/test"
+		}
+	],
+	"settings": {}
+}
