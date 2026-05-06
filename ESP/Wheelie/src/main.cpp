@@ -4,10 +4,12 @@
 #include <Wire.h>
 #include <MPU6050_light.h>
 #include <math.h>
+
 // --- 定义任务句柄 ---
 TaskHandle_t TaskMotor;
 TaskHandle_t TaskMonitor;
-// TaskHandle_t TaskBalance;
+TaskHandle_t TaskServo;
+TaskHandle_t TaskBalance;
 
 // --- MPU6050 ---
 #define I2C_SDA 2
@@ -34,13 +36,24 @@ void doRB() { encoderR.handleB(); }
 
 MyServo LeftServo("LeftServo");
 MyServo RightServo("RightServo");
+int Servo_angle = 45;
 
-// --- PID 与控制变量 ---
-float Kp = -0.6, Ki = -0.0, Kd = -0.05;
+// pid for servo 45 degree
+//  --- PID 与控制变量 ---
+//  float Kp = 2.4; // 1.2
+//  float Ki = 0.6;
+//  float Kd = 0.05;
+//  --- PID 与控制变量 ---
+float Kp = 2.6; // 1.2
+float Ki = 0.6;
+float Kd = 0.04;
 volatile float Pitch_angle = 0.0;
 volatile float Pitch_gyro = 0.0;
 float output_voltage = 0.0;
-float angle_offset = -2.0;
+float angle_offset = -5.0; // 根据实际情况调整初始角度偏移
+
+Commander command = Commander(Serial);
+void onMotor(char *cmd) { command.motor(&motorL, cmd); }
 
 // --- 卡尔曼计算函数 ---
 float kalmanUpdate(float newAngle, float newRate, float dt)
@@ -72,15 +85,8 @@ void TaskMotorCode(void *pvParameters)
   unsigned long lastTime = millis();
   for (;;)
   {
-    mpu.update();
-    unsigned long now = millis();
     float error = 0.0 - Pitch_angle;
-    float dt = (now - lastTime) / 1000.0;
-    lastTime = now;
-    Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt) - angle_offset;
-    Pitch_gyro = mpu.getGyroY();
-
-    if (abs(Pitch_angle) < 15.0) // 仅在角度较小时控制电机，避免过大输出
+    if (abs(Pitch_angle) < 20.0) // 仅在角度较小时控制电机，避免过大输出
     {
       motorL.enable();
       motorR.enable();
@@ -89,8 +95,8 @@ void TaskMotorCode(void *pvParameters)
       output_voltage = constrain(output_voltage, -5.0, 5.0);
       motorL.loopFOC();
       motorR.loopFOC();
-      motorL.move(output_voltage);
-      motorR.move(output_voltage);
+      motorL.move(-output_voltage);
+      motorR.move(-output_voltage);
     }
     else
     {
@@ -99,27 +105,58 @@ void TaskMotorCode(void *pvParameters)
       output_voltage = 0;
       error = 0;
     }
-
     vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
 
-// --- 任务：姿态读取 ---
-// void TaskBalanceCode(void *pvParameters)
-// {
-//   unsigned long lastTime = millis();
-//   for (;;)
-//   {
-//   }
-// }
+// --- 任务：Servo_Control ---
+void TaskServoCode(void *pvParameters)
+{
+  for (;;)
+  {
+    if (Servo_angle <= 100)
+    {
+      // printf("Servo Angle: %d\n", Servo_angle);
+      LeftServo.write(180 - Servo_angle);
+      RightServo.write(Servo_angle);
+    }
+    else
+    {
+      Servo_angle = 100; // 限制最大角度
+      // printf("Servo Angle: %d\n", Servo_angle);
+      LeftServo.write(180 - Servo_angle);
+      RightServo.write(Servo_angle);
+    }
+
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
 
 // --- 任务：监控输出 ---
 void TaskMonitorCode(void *pvParameters)
 {
   for (;;)
   {
-    printf("%f,%f,%f\n", output_voltage, Pitch_angle, mpu.getGyroY());
+    // printf("%f,%f,%f\n", encoderL.getVelocity(), Pitch_angle, mpu.getGyroY());
+    motorL.monitor();
     vTaskDelay(100 / portTICK_PERIOD_MS);
+  }
+}
+void TaskBalanceCode(void *pvParameters)
+{
+  TickType_t xLastWakeTime = xTaskGetTickCount();
+  const TickType_t xFrequency = 1; // 1ms 周期 (1kHz)
+  unsigned long lastTime = millis();
+  for (;;)
+  {
+    mpu.update();
+    unsigned long now = millis();
+
+    float dt = (now - lastTime) / 1000.0;
+    lastTime = now;
+    Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt) - angle_offset;
+    Pitch_gyro = mpu.getGyroY();
+    vTaskDelayUntil(&xLastWakeTime, xFrequency);
   }
 }
 
@@ -128,7 +165,7 @@ void setup()
   Serial.begin(115200);
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
   mpu.begin();
-  // mpu.calcOffsets(true, true);
+  mpu.calcOffsets(true, true);
 
   encoderL.init();
   encoderL.enableInterrupts(doLA, doLB);
@@ -137,8 +174,8 @@ void setup()
   driverL.init();
   motorL.linkDriver(&driverL);
   motorL.controller = MotionControlType::torque;
-  motorL.init();
-  motorL.initFOC();
+  // motorL.init();
+  // motorL.initFOC();
 
   encoderR.init();
   encoderR.enableInterrupts(doRA, doRB);
@@ -147,12 +184,61 @@ void setup()
   driverR.init();
   motorR.linkDriver(&driverR);
   motorR.controller = MotionControlType::torque;
-  motorR.init();
-  motorR.initFOC();
 
-  xTaskCreatePinnedToCore(TaskMotorCode, "MotorTask", 10000, NULL, 3, &TaskMotor, 1);
-  xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask", 10000, NULL, 0, &TaskMonitor, 0);
-  // xTaskCreatePinnedToCore(TaskBalanceCode, "BalanceTask", 10000, NULL, 2, &TaskBalance, 0);
+  if (motorL.initFOC() != 1)
+  {
+    Serial.println("Motor L FOC failed!");
+    while (1)
+      ; // 让系统停下来，而不是带着错误的参数运行
+  }
+  if (motorR.initFOC() != 1)
+  {
+    Serial.println("Motor R FOC failed!");
+    while (1)
+      ; // 让系统停下来，而不是带着错误的参数运行
+  }
+  // 启用调试功能
+  command.add('M', onMotor, "motor");
+
+  // Servo Setup
+  //--------------------------------
+  LeftServo.setup(GPIO_NUM_4, 1000, 2000);
+  RightServo.setup(GPIO_NUM_5, 1000, 2000);
+
+  LeftServo.write(20);   // init position
+  RightServo.write(160); // init position
+
+  xTaskCreatePinnedToCore(
+      TaskMotorCode,
+      "MotorTask",
+      10000,
+      NULL,
+      3,
+      &TaskMotor,
+      1);
+  xTaskCreatePinnedToCore(
+      TaskMonitorCode,
+      "MonitorTask",
+      10000, NULL,
+      0,
+      &TaskMonitor,
+      0);
+  xTaskCreatePinnedToCore(
+      TaskServoCode,
+      "ServoTask",
+      10000,
+      NULL,
+      2,
+      &TaskServo,
+      0);
+  xTaskCreatePinnedToCore(
+      TaskBalanceCode,
+      "BalanceTask",
+      10000,
+      NULL,
+      2,
+      &TaskBalance,
+      0);
 }
 
 void loop()
