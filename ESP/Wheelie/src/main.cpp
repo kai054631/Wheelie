@@ -1,115 +1,72 @@
-#include <Arduino.h>
-#include "MyServo.h"
-#include <SimpleFOC.h>
-#include <Wire.h>
-#include <MPU6050_light.h>
-#include <math.h>
+#include "config.h"
 
-// --- 定义任务句柄 ---
-TaskHandle_t TaskMotor;
-TaskHandle_t TaskMonitor;
-TaskHandle_t TaskServo;
-TaskHandle_t TaskBalance;
+// --- 变量定义 ---
+// float Kp = 2.6, Ki = 0.6, Kd = 0.07; // for servo angle =45
+// float angle_offset = -6.0;  // for servo angle =45
+// int Servo_angle = 45;
 
-// --- MPU6050 ---
-#define I2C_SDA 2
-#define I2C_SCL 1
-MPU6050 mpu(Wire);
+float Kp = 5.3, Ki = 0.02, Kd = 0.05;  // for servo angle =25
+float angle_offset = -9.20;  // for servo angle =25
+int Servo_angle = 25;
 
-// --- 卡尔曼滤波变量 ---
-float Q_angle = 0.001, Q_gyro = 0.003, R_angle = 0.03;
-float kalmanAngle = 0, bias = 0;
-float P[2][2] = {{1, 0}, {0, 1}};
-
-// --- SimpleFOC 驱动与编码器 ---
-BLDCMotor motorL = BLDCMotor(7);
-BLDCDriver3PWM driverL = BLDCDriver3PWM(14, 13, 12, 11);
-Encoder encoderL = Encoder(3, 46, 1024);
-void doLA() { encoderL.handleA(); }
-void doLB() { encoderL.handleB(); }
-
-BLDCMotor motorR = BLDCMotor(7);
-BLDCDriver3PWM driverR = BLDCDriver3PWM(16, 15, 7, 6);
-Encoder encoderR = Encoder(17, 18, 1024);
-void doRA() { encoderR.handleA(); }
-void doRB() { encoderR.handleB(); }
-
-MyServo LeftServo("LeftServo");
-MyServo RightServo("RightServo");
-int Servo_angle = 45;
-
-// pid for servo 45 degree
-//  --- PID 与控制变量 ---
-//  float Kp = 2.4; // 1.2
-//  float Ki = 0.6;
-//  float Kd = 0.05;
-//  --- PID 与控制变量 ---
-float Kp = 2.6; // 1.2
-float Ki = 0.6;
-float Kd = 0.04;
-volatile float Pitch_angle = 0.0;
-volatile float Pitch_gyro = 0.0;
+volatile float Pitch_angle = 0.0, Pitch_gyro = 0.0;
 float output_voltage = 0.0;
-float angle_offset = -5.0; // 根据实际情况调整初始角度偏移
+float move_velocity = 0; // in voltage
+float turn_velocity = 0; //in voltage
 
-Commander command = Commander(Serial);
-void onMotor(char *cmd) { command.motor(&motorL, cmd); }
+// --- 硬件对象定义 ---
+MPU6050 mpu(Wire);
+BLDCMotor motorL(7), motorR(7);
+BLDCDriver3PWM driverL(14, 13, 12, 11), driverR(16, 15, 7, 6);
+Encoder encoderL(3, 46, 1024), encoderR(17, 18, 1024);
+MyServo LeftServo("LeftServo"), RightServo("RightServo");
 
-// --- 卡尔曼计算函数 ---
-float kalmanUpdate(float newAngle, float newRate, float dt)
-{
-  float rate = newRate - bias;
-  kalmanAngle += dt * rate;
-  P[0][0] += dt * (dt * P[1][1] - P[0][1] - P[1][0] + Q_angle);
-  P[0][1] -= dt * P[1][1];
-  P[1][0] -= dt * P[1][1];
-  P[1][1] += Q_gyro * dt;
-  float S = P[0][0] + R_angle;
-  float K[2] = {P[0][0] / S, P[1][0] / S};
-  float y = newAngle - kalmanAngle;
-  kalmanAngle += K[0] * y;
-  bias += K[1] * y;
-  float P00_temp = P[0][0], P01_temp = P[0][1];
-  P[0][0] -= K[0] * P00_temp;
-  P[0][1] -= K[0] * P01_temp;
-  P[1][0] -= K[1] * P00_temp;
-  P[1][1] -= K[1] * P01_temp;
-  return kalmanAngle;
-}
+// --- 编码器中断函数 ---
+void doLA() { encoderL.handleA(); } void doLB() { encoderL.handleB(); }
+void doRA() { encoderR.handleA(); } void doRB() { encoderR.handleB(); }
 
-// --- 任务：电机控制 ---
-void TaskMotorCode(void *pvParameters)
-{
+// --- 任务：电机控制 (Core 1) ---
+void TaskMotorCode(void *pv) {
+  // 关键：在任务内进行最后的初始化，防止 Core 0 和 Core 1 争抢电机
+  vTaskDelay(1000 / portTICK_PERIOD_MS); 
+  motorL.initFOC();
+  motorR.initFOC();
+  
   TickType_t xLastWakeTime = xTaskGetTickCount();
-  const TickType_t xFrequency = 1; // 1ms 周期 (1kHz)
-  unsigned long lastTime = millis();
-  for (;;)
-  {
-    float error = 0.0 - Pitch_angle;
-    if (abs(Pitch_angle) < 20.0) // 仅在角度较小时控制电机，避免过大输出
-    {
-      motorL.enable();
+  for (;;) {
+    if (abs(Pitch_angle) < 20.0) {
+      motorL.enable(); 
       motorR.enable();
-      error = 0.0 - Pitch_angle;
-      output_voltage = (Kp * error) - (Kd * Pitch_gyro);
-      output_voltage = constrain(output_voltage, -5.0, 5.0);
-      motorL.loopFOC();
-      motorR.loopFOC();
-      motorL.move(-output_voltage);
-      motorR.move(-output_voltage);
+
+      float target_angle = 0.0 + move_velocity;
+      float error = target_angle - Pitch_angle;
+      output_voltage = constrain((Kp * error) - (Kd * Pitch_gyro), -5.0, 5.0);
+      motorL.loopFOC(); motorR.loopFOC();
+      motorL.move(-output_voltage+turn_velocity); 
+      motorR.move(-output_voltage-turn_velocity);
+    } else {
+      motorL.disable(); motorR.disable();
     }
-    else
-    {
-      motorL.disable();
-      motorR.disable();
-      output_voltage = 0;
-      error = 0;
-    }
-    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+    // 1ms 周期
+    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1)); 
   }
 }
 
-// --- 任务：Servo_Control ---
+// --- 任务：姿态计算 (Core 0) ---
+void TaskBalanceCode(void *pv) {
+  unsigned long lastTime = millis();
+  for (;;) {
+    mpu.update();
+    unsigned long now = millis();
+    float dt = (now - lastTime) / 1000.0;
+    lastTime = now;
+    Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt) - angle_offset;
+    Pitch_gyro = mpu.getGyroY();
+    vTaskDelay(pdMS_TO_TICKS(1)); 
+  }
+}
+
+// --- 任务：Servo 控制 (Core 0) ---
 void TaskServoCode(void *pvParameters)
 {
   for (;;)
@@ -132,116 +89,65 @@ void TaskServoCode(void *pvParameters)
   }
 }
 
-// --- 任务：监控输出 ---
-void TaskMonitorCode(void *pvParameters)
-{
-  for (;;)
-  {
-    // printf("%f,%f,%f\n", encoderL.getVelocity(), Pitch_angle, mpu.getGyroY());
-    motorL.monitor();
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-}
-void TaskBalanceCode(void *pvParameters)
-{
-  TickType_t xLastWakeTime = xTaskGetTickCount();
-  const TickType_t xFrequency = 1; // 1ms 周期 (1kHz)
-  unsigned long lastTime = millis();
-  for (;;)
-  {
-    mpu.update();
-    unsigned long now = millis();
-
-    float dt = (now - lastTime) / 1000.0;
-    lastTime = now;
-    Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt) - angle_offset;
-    Pitch_gyro = mpu.getGyroY();
-    vTaskDelayUntil(&xLastWakeTime, xFrequency);
+// --- 任务：监控 (Core 0) ---
+void TaskMonitorCode(void *pv) {
+  for (;;) {
+    // 构造数据字符串: "角度,电压"
+    String data = String(Pitch_angle, 2) + "," + String(output_voltage, 2);
+    
+    // 通过 WebSocket 发送给所有连接的网页客户端
+    ws.textAll(data);
+    
+    // 同时保留串口输出方便电脑查看
+    // Serial.println(data);
+    printf("Motor L: %.2f | Motor R: %.2f |ip:%s\n ", -output_voltage+turn_velocity,-output_voltage-turn_velocity, WiFi.localIP().toString().c_str());
+    
+    vTaskDelay(pdMS_TO_TICKS(100)); // 每100ms更新一次网页监视器
   }
 }
 
-void setup()
-{
+void setup() {
   Serial.begin(115200);
+  delay(1000);
+
+  // MPU6050
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
   mpu.begin();
-  mpu.calcOffsets(true, true);
+  // mpu.calcOffsets(true, true);
+  printf("MPU6050 initialized with angle offset: %.2f\n", angle_offset);
 
-  encoderL.init();
+  setupWebServer();
+  vTaskDelay(2000 / portTICK_PERIOD_MS);
+
+
+  // 电机基础初始化 (不包含阻塞的 initFOC)
+  encoderL.init(); 
   encoderL.enableInterrupts(doLA, doLB);
-  motorL.linkSensor(&encoderL);
-  driverL.voltage_power_supply = 12;
+  driverL.voltage_power_supply = 12; 
   driverL.init();
+  motorL.linkSensor(&encoderL); 
   motorL.linkDriver(&driverL);
-  motorL.controller = MotionControlType::torque;
-  // motorL.init();
-  // motorL.initFOC();
+  motorL.controller = MotionControlType::torque; 
+  motorL.init();
 
-  encoderR.init();
+  encoderR.init(); 
   encoderR.enableInterrupts(doRA, doRB);
-  motorR.linkSensor(&encoderR);
-  driverR.voltage_power_supply = 12;
+  driverR.voltage_power_supply = 12; 
   driverR.init();
+  motorR.linkSensor(&encoderR); 
   motorR.linkDriver(&driverR);
-  motorR.controller = MotionControlType::torque;
+  motorR.controller = MotionControlType::torque; 
+  motorR.init();
 
-  if (motorL.initFOC() != 1)
-  {
-    Serial.println("Motor L FOC failed!");
-    while (1)
-      ; // 让系统停下来，而不是带着错误的参数运行
-  }
-  if (motorR.initFOC() != 1)
-  {
-    Serial.println("Motor R FOC failed!");
-    while (1)
-      ; // 让系统停下来，而不是带着错误的参数运行
-  }
-  // 启用调试功能
-  command.add('M', onMotor, "motor");
+  // Servo
+  LeftServo.setup(SERVO_L_PIN, 1000, 2000);
+  RightServo.setup(SERVO_R_PIN, 1000, 2000);
 
-  // Servo Setup
-  //--------------------------------
-  LeftServo.setup(GPIO_NUM_4, 1000, 2000);
-  RightServo.setup(GPIO_NUM_5, 1000, 2000);
-
-  LeftServo.write(20);   // init position
-  RightServo.write(160); // init position
-
-  xTaskCreatePinnedToCore(
-      TaskMotorCode,
-      "MotorTask",
-      10000,
-      NULL,
-      3,
-      &TaskMotor,
-      1);
-  xTaskCreatePinnedToCore(
-      TaskMonitorCode,
-      "MonitorTask",
-      10000, NULL,
-      0,
-      &TaskMonitor,
-      0);
-  xTaskCreatePinnedToCore(
-      TaskServoCode,
-      "ServoTask",
-      10000,
-      NULL,
-      2,
-      &TaskServo,
-      0);
-  xTaskCreatePinnedToCore(
-      TaskBalanceCode,
-      "BalanceTask",
-      10000,
-      NULL,
-      2,
-      &TaskBalance,
-      0);
+  // 创建任务 (注意优先级：电机最高)
+  xTaskCreatePinnedToCore(TaskMotorCode, "MotorTask", 10000, NULL, 3, NULL, 1);
+  xTaskCreatePinnedToCore(TaskBalanceCode, "BalanceTask", 10000, NULL, 2, NULL, 0);
+  xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask", 5000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TaskServoCode, "ServoTask", 5000, NULL, 1, NULL, 0);
 }
 
-void loop()
-{
-  // 必须留空，但不能删除
-}
+void loop() {}
