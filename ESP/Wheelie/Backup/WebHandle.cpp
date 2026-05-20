@@ -38,9 +38,9 @@ const char index_html[] PROGMEM = R"rawliteral(
   </div>
 
   <div class="card">
-    <h3>PID 调参</h3>
-    <p>Kp: <span id="kp_val">%KP%</span> <input type="range" class="slider" min="0" max="10" step="0.1" value="%KP%" oninput="update('P',this.value)"></p>
-    <p>Ki: <span id="ki_val">%KI%</span> <input type="range" class="slider" min="0" max="1" step="0.001" value="%KI%" oninput="update('I',this.value)"></p>
+    <h3>Pitch PID 调参</h3>
+    <p>Kp: <span id="kp_val">%KP%</span> <input type="range" class="slider" min="0" max="15" step="0.1" value="%KP%" oninput="update('P',this.value)"></p>
+    <p>Ki: <span id="ki_val">%KI%</span> <input type="range" class="slider" min="0" max="0.5" step="0.001" value="%KI%" oninput="update('I',this.value)"></p>
     <p>Kd: <span id="kd_val">%KD%</span> <input type="range" class="slider" min="0" max="1" step="0.01" value="%KD%" oninput="update('D',this.value)"></p>
     <p>Offset: <span id="off_val">%OFF%</span> <input type="range" class="slider" min="-15" max="15" step="0.1" value="%OFF%" oninput="update('O',this.value)"></p>
   </div>
@@ -53,41 +53,38 @@ const char index_html[] PROGMEM = R"rawliteral(
     }
     function update(t, v) { 
       fetch('/set?type=' + t + '&val=' + v); 
-      let id = (t=='P')?'kp_val':(t=='I')?'ki_val':(t=='D')?'kd_val':'off_val';
+      // Link the JS directly to the Pitch variables
+      let id = (t=='P') ? 'kp_val' : (t=='I') ? 'ki_val' : (t=='D') ? 'kd_val' : 'off_val';
       document.getElementById(id).innerHTML = v;
     }
   </script>
 </body>
 </html>)rawliteral";
 
-// 处理器：确保每个占位符都有返回，哪怕是 0
+// 处理器：确保每个占位符都有返回
 String processor(const String &var)
 {
-  if (var == "KP")
-    return String(Kp, 1);
-  if (var == "KD")
-    return String(Kd, 2);
-  if (var == "KI")
-    return String(Ki, 2);
-  if (var == "OFF")
-    return String(angle_offset, 1);
+  if (var == "KP") return String(Kp, 1);
+  if (var == "KI") return String(Ki, 3); // Changed to 3 decimal places for finer Ki tuning
+  if (var == "KD") return String(Kd, 2);
+  if (var == "OFF") return String(angle_offset, 2);
   return "0";
 }
 
 void setupWebServer()
 {
   WiFi.mode(WIFI_STA);
-  WiFi.begin("yong-ThinkPad-T470", "00000000");
+  // WiFi.begin("yong-ThinkPad-T470", "00000000");
+  WiFi.begin("smarthome_", "11121968");
 
-  Serial.print("Connecting WiFi");
+  Serial.print("Connecting WiFi\n");
   while (WiFi.status() != WL_CONNECTED)
   {
     delay(500);
-    Serial.print(".");
+    Serial.print("Connecting WiFi\n");
   }
   Serial.println("\nWiFi Connected! IP: " + WiFi.localIP().toString());
 
-  // 必须在 server.begin 之前添加处理器
   server.addHandler(&ws);
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -100,10 +97,10 @@ void setupWebServer()
       Servo_angle = target_angle;
       if(target_angle == 25)
       {
-        angle_offset = -9.20; 
+        angle_offset = -10.30; 
       }else
       {
-        angle_offset = -5.50; 
+        angle_offset = -2.50; 
       }
 
       Serial.printf("Servo target updated to: %d\n", Servo_angle);
@@ -116,10 +113,14 @@ void setupWebServer()
     if (request->hasParam("type") && request->hasParam("val")) {
       String type = request->getParam("type")->value();
       float val = request->getParam("val")->value().toFloat();
+      
+      // Assigns the slider values to your global Pitch PID variables
       if (type == "P") Kp = val;
-      else if (type == "D") Kd = val;
       else if (type == "I") Ki = val;
+      else if (type == "D") Kd = val;
       else if (type == "O") angle_offset = val;
+      
+      Serial.printf("Updated %s to %.3f\n", type.c_str(), val);
     }
     request->send(200); });
 

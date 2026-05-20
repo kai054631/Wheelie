@@ -1,18 +1,14 @@
 #include "config.h"
 
 // --- 变量定义 ---
-// float Kp = 2.6, Ki = 0.6, Kd = 0.07; // for servo angle =45
-// float angle_offset = -6.0;  // for servo angle =45
-// int Servo_angle = 45;
+float angle_offset = -9.2; // in angle form
+volatile float Pitch_Radian = 0.0, Pitch_gyro = 0.0;
 
-float Kp = 5.3, Ki = 0.02, Kd = 0.05; // for servo angle =25
-float angle_offset = -9.20;           // for servo angle =25
-int Servo_angle = 25;
+volatile float shared_motor_voltage = 0.0; // share variable for taskbalance and taskmotor
+int Servo_angle = 25;                      // angle for the servo
 
-volatile float Pitch_angle = 0.0, Pitch_gyro = 0.0;
-float output_voltage = 0.0;
-float move_velocity = 0; // in voltage
-float turn_velocity = 0; // in voltage
+bool runMotor = false;
+RobotState target = {0.0f, 0.0f, 0.0f, 0.0f}; // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
 
 // --- 硬件对象定义 ---
 MPU6050 mpu(Wire);
@@ -30,33 +26,36 @@ void doRB() { encoderR.handleB(); }
 // --- 任务：电机控制 (Core 1) ---
 void TaskMotorCode(void *pv)
 {
-  // 关键：在任务内进行最后的初始化，防止 Core 0 和 Core 1 争抢电机
-  vTaskDelay(1000 / portTICK_PERIOD_MS);
-  motorL.initFOC();
-  motorR.initFOC();
-
+  if (!runMotor)
+  {
+    vTaskDelete(NULL); // 如果不运行电机，直接删除任务
+    return;
+  }
+  else
+  {
+    printf("Starting Motor Initialization and FOC Alignment...\n");
+    motorL.initFOC();
+    motorR.initFOC();
+    // printf("Motor L Zero Electric Angle: %.2f, Sensor Direction: %d\n", motorL.zero_electric_angle, motorL.sensor_direction);
+    // printf("Motor R Zero Electric Angle: %.2f, Sensor Direction: %d\n", motorR.zero_electric_angle, motorR.sensor_direction);
+  }
   TickType_t xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    if (abs(Pitch_angle) < 20.0)
+    motorL.loopFOC();
+    motorR.loopFOC();
+    if (abs(Pitch_Radian) < 0.3)
     {
       motorL.enable();
       motorR.enable();
-
-      float target_angle = 0.0 + move_velocity;
-      float error = target_angle - Pitch_angle;
-      output_voltage = constrain((Kp * error) - (Kd * Pitch_gyro), -5.0, 5.0);
-      motorL.loopFOC();
-      motorR.loopFOC();
-      motorL.move(-output_voltage + turn_velocity);
-      motorR.move(-output_voltage - turn_velocity);
+      motorL.move(shared_motor_voltage);
+      motorR.move(shared_motor_voltage);
     }
     else
     {
       motorL.disable();
       motorR.disable();
     }
-    // 1ms 周期
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));
   }
 }
@@ -69,11 +68,20 @@ void TaskBalanceCode(void *pv)
   {
     mpu.update();
     unsigned long now = millis();
-    float dt = (now - lastTime) / 1000.0;
+    float dt = (now - lastTime) / 1000.0f;
     lastTime = now;
-    Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt) - angle_offset;
+    Pitch_Radian = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt);
     Pitch_gyro = mpu.getGyroY();
-    vTaskDelay(pdMS_TO_TICKS(1));
+
+    RobotState currentState;
+    currentState.position = get_average_distance_meters();
+    currentState.velocity = get_average_velocity_mps();
+    currentState.pitch_angle = Pitch_Radian * (PI / 180.0f); // in radian/s
+    currentState.gyro_rate = Pitch_gyro * (PI / 180.0f);     // in rad/s
+
+    // 使用你新定义的函数计算电压
+    shared_motor_voltage = compute_LQR_balancing_voltage(currentState, target, angle_offset);
+    vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
 
@@ -84,19 +92,10 @@ void TaskServoCode(void *pvParameters)
   {
     if (Servo_angle <= 100)
     {
-      int servo_angle = constrain(Servo_angle, 20, 100); // 直接使用全局变量，避免重复读取
-      // printf("Servo Angle: %d\n", Servo_angle);
-      LeftServo.speedControl(180 - servo_angle,5.0); // 速度控制，参数可调
-      RightServo.speedControl(servo_angle,15.0);
+      int servo_angle = constrain(Servo_angle, 20, 100);
+      LeftServo.write(180 - servo_angle);                
+      RightServo.write(servo_angle);
     }
-    else
-    {
-      Servo_angle = 100; // 限制最大角度
-      // printf("Servo Angle: %d\n", Servo_angle);
-      LeftServo.write(180 - Servo_angle);
-      RightServo.write(Servo_angle);
-    }
-
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
@@ -106,74 +105,51 @@ void TaskMonitorCode(void *pv)
 {
   for (;;)
   {
-    // 构造数据字符串: "角度,电压"
-    String data = String(Pitch_angle, 2) + "," + String(output_voltage, 2);
-
-    // 通过 WebSocket 发送给所有连接的网页客户端
-    ws.textAll(data);
-    // 同时保留串口输出方便电脑查看
-    // Serial.println(data);
-    printf("Motor L: %.2f | Motor R: %.2f | Pitch: %.2f |Turn_Velocity: %.2f | Move_Velocity: %.2f | angle_offset: %.2f\n ", motorL.shaft_velocity, motorR.shaft_velocity, Pitch_angle, turn_velocity, move_velocity, angle_offset);
-
+    // Serial.printf("Motor_Speed: %.2f | Voltage:%.2f | Pitch Angle: %.2f\n", motorL.shaftVelocity(), shared_motor_voltage, Pitch_angle);
+    Serial.printf("X1: %.2f | X2: %.2f | X3: %.2f | X4: %.2f\n", x1, x2, x3, x4);
     vTaskDelay(pdMS_TO_TICKS(100)); // 每100ms更新一次网页监视器
   }
 }
 
 void setup()
 {
-  printf("starting setup...\n");
   Serial.begin(115200);
-  delay(1000);
 
   // MPU6050
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
   mpu.begin();
   // mpu.calcOffsets(true, true);
-  // printf("MPU6050 initialized with angle offset: %.2f\n", angle_offset);
 
-  setupWebServer();
-  vTaskDelay(2000 / portTICK_PERIOD_MS);
+  // setupWebServer();
+  // vTaskDelay(2000 / portTICK_PERIOD_MS);
 
   // 电机基础初始化 (不包含阻塞的 initFOC)
   encoderL.init();
   encoderL.enableInterrupts(doLA, doLB);
   driverL.voltage_power_supply = 12;
+  motorL.voltage_limit = 8;
   driverL.init();
   motorL.linkSensor(&encoderL);
   motorL.linkDriver(&driverL);
-  motorL.voltage_sensor_align = 3;
+  motorL.voltage_sensor_align = 5;
   motorL.controller = MotionControlType::torque;
   motorL.init();
-  if (motorL.initFOC() != 1)
-  {
-    printf("CRITICAL ERROR: Motor L FOC calibration FAILED!\n");
-    motorL.disable();
-    while (1)
-      ;
-  }
-  printf("Motor L FOC success.\n");
 
   encoderR.init();
   encoderR.enableInterrupts(doRA, doRB);
   driverR.voltage_power_supply = 12;
+  motorR.voltage_limit = 8;
   driverR.init();
   motorR.linkSensor(&encoderR);
   motorR.linkDriver(&driverR);
   motorR.controller = MotionControlType::torque;
-  motorR.voltage_sensor_align = 3;
+  motorR.voltage_sensor_align = 5;
   motorR.init();
-  if (motorR.initFOC() != 1)
-  {
-    printf("CRITICAL ERROR: Motor R FOC calibration FAILED!\n");
-    motorR.disable();
-    while (1)
-      ;
-  }
-  printf("Motor R FOC success. System ready.\n");
+  runMotor = true;
 
   // Servo
   LeftServo.setup(SERVO_L_PIN, 1000, 2000);
-  RightServo.setup(SERVO_R_PIN, 1000, 2200);
+  RightServo.setup(SERVO_R_PIN, 1000, 2000);
 
   // 创建任务 (注意优先级：电机最高)
   xTaskCreatePinnedToCore(TaskMotorCode, "MotorTask", 10000, NULL, 3, NULL, 1);
@@ -181,5 +157,4 @@ void setup()
   xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask", 5000, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(TaskServoCode, "ServoTask", 5000, NULL, 1, NULL, 0);
 }
-
 void loop() {}

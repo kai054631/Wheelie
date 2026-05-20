@@ -1,0 +1,12 @@
+# Ignore Python virtual environments
+.venv/
+venv/
+ENV/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore PlatformIO build outputs and local dependency libraries
+.pio/
+.tmp/
