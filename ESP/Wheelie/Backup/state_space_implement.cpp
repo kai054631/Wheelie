@@ -1,7 +1,7 @@
 #include "config.h"
 
 // --- 变量定义 ---
-float angle_offset = -9.2; // for servo angle =25
+float angle_offset = -9.3; // for servo angle =25
 volatile float Pitch_angle = 0.0, Pitch_gyro = 0.0;
 float Pitch_integral = 0.0;
 
@@ -20,14 +20,11 @@ struct RobotState
 };
 
 // 2. 将之前计算出的 K 增益向量作为常量放入代码
-const float K1 = 12.2474 / 15; // 轮子水平位置反馈 (Position)
-const float K2 = 275.986 / 15; // 轮子水平速度反馈 (Velocity)
+const float K1 = -12.2474 / 10; // 轮子水平位置反馈 (Position)
+const float K2 = 275.986 / 10; // 轮子水平速度反馈 (Velocity)
 const float K3 = 91.2049 / 1;  // 车身倾斜角度反馈 (Pitch Angle in Rad)
-const float K4 = 10.4469 / 4;  // 车身陀螺仪角速度反馈 (Gyro Rate in Rad/s)
-float x1 = 0;
-float x2 = 0;
-float x3 = 0;
-float x4 = 0;
+const float K4 = 10.4469 / 2;  // 车身陀螺仪角速度反馈 (Gyro Rate in Rad/s)
+
 // 3. 计算平衡电压的函数
 float compute_LQR_balancing_voltage(RobotState current, RobotState target, float angle_offset_deg)
 {
@@ -81,43 +78,7 @@ void doRB() { encoderR.handleB(); }
 float average_speed = 0;
 float calibration_step = 0.001; // How fast to adjust the angle
 bool is_calibrating = false;
-
-// void TaskAutoCalibrate(void *pvParameters)
-// {
-//   for (;;)
-//   {
-//     if (is_calibrating)
-//     {
-//       if (abs(Pitch_angle) < 10.0)
-//       {
-//         // 1. Get the current motor speed (using SimpleFOC's velocity or your PID output)
-//         // We use a simple Low Pass Filter to smooth out the noisy speed data
-//         float current_speed = (motorL.shaft_velocity + motorR.shaft_velocity) / 2.0;
-//         printf("current_speed: %f\n", current_speed);
-//         average_speed = (average_speed * 0.95) + (current_speed * 0.05);
-
-//         // 2. Adjust the offset based on the speed drift
-//         if (average_speed > 0.1)
-//         {
-//           // Drifting forward: Lean it backward slightly
-//           angle_offset += calibration_step;
-//         }
-//         else if (average_speed < -0.1)
-//         {
-//           // Drifting backward: Lean it forward slightly
-//           angle_offset -= calibration_step;
-//         }
-//         else if (abs(average_speed) < 0.05)
-//         {
-//           // Speed is practically zero! We found the sweet spot.
-//           printf("Calibration Complete! New Angle Offset: %f\n", angle_offset);
-//           is_calibrating = false; // Stop calibrating
-//         }
-//       }
-//     }
-//     vTaskDelay(100 / portTICK_PERIOD_MS); // Run every 100ms
-//   }
-// }
+ 
 // --- 任务：电机控制 (Core 1) ---
 void TaskMotorCode(void *pv)
 {

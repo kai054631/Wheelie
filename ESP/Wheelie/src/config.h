@@ -18,10 +18,10 @@
 
 // --- 全局变量声明 (extern 表示实现在其他地方) ---
 extern float angle_offset;
-extern volatile float Pitch_Radian, Pitch_gyro;
+extern volatile float Pitch_angle, Pitch_gyro;
 
 extern int Servo_angle;
-//state_space_variable
+// state_space_variable
 struct RobotState
 {
      float position;
@@ -30,10 +30,10 @@ struct RobotState
      float gyro_rate;
 };
 
-extern const float K1; // 轮子水平位置反馈 (Position)
-extern const float K2;  // 轮子水平速度反馈 (Velocity)
-extern const float K3;   // 车身倾斜角度反馈 (Pitch Angle in Rad)
-extern const float K4;   // 车身陀螺仪角速度反馈 (Gyro Rate in Rad/s)
+extern float K1 ; // 轮子水平位置反馈 (Position)
+extern float K2 ;  // 轮子水平速度反馈 (Velocity)
+extern float K3 ;   // 车身倾斜角度反馈 (Pitch Angle in Rad)
+extern float K4 ;   // 车身陀螺仪角速度反馈 (Gyro Rate in Rad/s)
 
 extern float x1; // error in position, in meters
 extern float x2; // error in velocity, in meters per second
