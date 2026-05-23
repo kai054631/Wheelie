@@ -3,10 +3,15 @@ import control as ct
 
 # --- 1. Mechanical and Electrical Constants ---
 # Derived from physical hardware mass and inertia tensors
-C1 = 25.69
-C2 = 5.54
-C3 = 532.57
-C4 = 83.15
+# C1 = 25.69
+# C2 = 5.54
+# C3 = 532.57
+# C4 = 83.15
+
+C1 = 113.1094
+C2 = 472.7512
+C3 = 113.1094
+C4 = 962.0834
 
 # Motor constants (multiplied by 2 to account for both 2804 wheels)
 Cm1 = 0.0049 * 2
@@ -36,7 +41,7 @@ Q = np.diag([100, 1 , 4, 1])
 # R penalizes control effort (Motor Voltage).
 # Set to 1000 to heavily penalize voltage usage and force realistically 
 # achievable gains for the direct-drive gimbal motors.
-R = np.array([[10]])
+R = np.array([[1]])
 
 # --- 4. Calculate LQR Gains ---
 # The lqr function returns the Gain matrix (K), solution to Riccati equation (S), 

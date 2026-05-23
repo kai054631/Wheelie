@@ -5,8 +5,8 @@
 #include <SimpleFOC.h>
 #include <MPU6050_light.h>
 #include "MyServo.h"
-// #include <ESPAsyncWebServer.h>
-// #include <WiFi.h>
+#include <ESPAsyncWebServer.h>
+#include <WiFi.h>
 
 // --- 引脚定义 ---
 // mpu6050 pin
@@ -19,7 +19,7 @@
 // --- 全局变量声明 (extern 表示实现在其他地方) ---
 extern float angle_offset;
 extern volatile float Pitch_angle, Pitch_gyro;
-
+extern volatile float shared_motor_voltage;
 extern int Servo_angle;
 // state_space_variable
 struct RobotState
@@ -53,8 +53,8 @@ extern Encoder encoderL, encoderR;
 //servo
 extern MyServo LeftServo, RightServo;
 //web server
-// extern AsyncWebServer server;
-// extern AsyncWebSocket ws; // 添加这一行
+extern AsyncWebServer server;
+extern AsyncWebSocket ws; // 添加这一行
 
 // --- 函数原型 ---
 //kalman filter update function
@@ -65,8 +65,8 @@ void doLB();
 void doRA(); 
 void doRB();
 
-// //web server setup function
-// void setupWebServer();
+//web server setup function
+void setupWebServer();
 
 float compute_LQR_balancing_voltage(RobotState current, RobotState target, float angle_offset_deg);
 float get_average_distance_meters();

@@ -10,7 +10,7 @@ float x4 =0.0f; // error in gyro rate, in radians per second
 float compute_LQR_balancing_voltage(RobotState current, RobotState target, float angle_offset_deg)
 {
   // 转换为弧度
-  float angle_offset_rad = angle_offset_deg * (PI / 180.0f);
+  float angle_offset_rad = angle_offset_deg;
 
   // 计算误差向量
   x1 = current.position - target.position;
@@ -20,7 +20,7 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
 
   // 状态空间核心：u = -(K*x)
   float voltage = -((K1 * x1) + (K2 * x2) + (K3 * x3) + (K4 * x4));
-  return constrain(voltage, -5.0f, 5.0f);
+  return constrain(voltage, -8.0f, 8.0f);
 }
 
 // 4. 辅助函数（用于获取米和米/秒）
