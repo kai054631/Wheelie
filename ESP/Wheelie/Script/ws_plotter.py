@@ -22,7 +22,7 @@ DEFAULT_IP   = "192.168.4.1"
 WINDOW       = 200
 DEFAULT_PLOT = ["Pitch_Angle", "Voltage", "x3"]
 
-ALL_KEYS = ["x1", "x2", "x3", "x4",
+ALL_KEYS = ["meter_error","x1", "x2", "x3", "x4",
             "Pitch_Angle", "Voltage",
             "Left_Velocity", "Right_Velocity",
             "Motor_L_Angle", "Motor_R_Angle"]

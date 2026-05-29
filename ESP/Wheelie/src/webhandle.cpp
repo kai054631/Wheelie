@@ -132,7 +132,7 @@ void setupWebServer()
             else if (type == "TA") target.pitch_angle = val;
             else if (type == "TG") target.gyro_rate = val;
             
-            Serial.printf("Updated via Web: %s = %.4f\n", type.c_str(), val);
+            // Serial.printf("Updated via Web: %s = %.4f\n", type.c_str(), val);
         }
         request->send(200); });
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request)

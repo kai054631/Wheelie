@@ -23,7 +23,7 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   x4 = current.gyro_rate - target.gyro_rate;
   // printf("angle_offset_rad: %.4f\n", angle_offset_rad);
   // Cap position error to ±0.2m so large drift doesn't dominate over pitch control
-  x3 = constrain(x3, -0.2f, 0.2f);
+  // x3 = constrain(x3, -0.2f, 0.2f);
 
   // 状态空间核心：u = -(K*x)
   float voltage = -((K1 * x1) + (K2 * x2) + (K3 * x3) + (K4 * x4));

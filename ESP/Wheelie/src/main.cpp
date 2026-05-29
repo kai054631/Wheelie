@@ -11,7 +11,7 @@ float angle_offset = -0.18;
 float K1 = 0; // 轮子水平位置反馈 (Position) --- IGNORE ---
 float K2 = 0; // 轮子水平速度反馈 (Velocity) --- IGNORE ---
 float K3 = 22.99;  // 车身倾斜角度反馈 (Pitch Angle in Rad) --- IGNORE ---
-float K4 = 2.2;  // 车身陀螺仪角速度
+float K4 = 1.17;  // 车身陀螺仪角速度
 
 // // // //for 45 degree
 // int Servo_angle = 45;      
@@ -47,7 +47,7 @@ void TaskMotorCode(void *pv)
   TickType_t xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    if (abs(currentState.pitch_angle) > 0.4f)
+    if (abs(currentState.pitch_angle-angle_offset) > 0.4f)
     {
       // Only call disable if the motor is currently running
       if (motorL.enabled)
@@ -68,8 +68,8 @@ void TaskMotorCode(void *pv)
         motorR.enable();
       }
       float v = -shared_motor_voltage;
-      motorL.move(0.6);
-      motorR.move(0.6);
+      motorL.move(v);
+      motorR.move(v);
     }
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));
   }
@@ -123,8 +123,8 @@ void TaskMonitorCode(void *pv)
     // Serial.printf("Motor_Speed: %.2f | Voltage:%.2f | Pitch Angle: %.2f\n", motorL.shaftVelocity(), shared_motor_voltage, Pitch_angle);
     // Serial.printf(" x1: %.2f, x2: %.2f ,x3: %.2f ,x4: %.2f , Pitch_Angle: %.2f , Voltage: %.2f , Left_Velocity: %.2f , Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f\n", K1 * x1, K2 * x2, K3 * x3, K4 * x4, currentState.pitch_angle, shared_motor_voltage, motorL.shaftVelocity(), motorR.shaftVelocity(), encoderL.getAngle(), encoderR.getAngle());
     snprintf(buffer, sizeof(buffer),
-             "x1: %.2f, x2: %.2f, x3: %.2f, x4: %.2f, Pitch_Angle: %.2f, Voltage: %.2f, Left_Velocity: %.2f, Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f, Temperature: %.2f\n",
-             x1, K2 * x2, K3 * x3, K4 * x4, 
+             "meter_error:%.2f| x1: %.2f, x2: %.2f, x3: %.2f, x4: %.2f, Pitch_Angle: %.2f, Voltage: %.2f, Left_Velocity: %.2f, Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f, Temperature: %.2f\n",
+             x1,K1*x1, K2 * x2, K3 * x3, K4 * x4, 
              currentState.pitch_angle, shared_motor_voltage, 
              motorL.shaftVelocity(), motorR.shaftVelocity(), 
              encoderL.getAngle(), encoderR.getAngle()
