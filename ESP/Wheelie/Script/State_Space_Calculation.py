@@ -73,8 +73,8 @@ MOTOR_RESISTANCE  = 2.55      # phase resistance Rph (Ω)
 #
 # ⚠  Keep Q_PITCH_RATE ≤ 3.  Above this, K4 will exceed the 4.0 hardware
 #    limit (motor oscillation — HANDOFF §6.2).
-Q_POSITION   =  10.0    # x1 — wheel position  (m)
-Q_VELOCITY   =  5.0    # x2 — wheel velocity  (m/s)
+Q_POSITION   =  0.0    # x1 — wheel position  (m)
+Q_VELOCITY   =  0.0    # x2 — wheel velocity  (m/s)
 Q_PITCH      =  800   # x3 — pitch angle     (rad)
 Q_PITCH_RATE =   8   # x4 — pitch rate      (rad/s)  ← do not exceed 3
 
