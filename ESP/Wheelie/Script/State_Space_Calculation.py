@@ -73,12 +73,12 @@ MOTOR_RESISTANCE  = 2.55      # phase resistance Rph (Ω)
 #
 # ⚠  Keep Q_PITCH_RATE ≤ 3.  Above this, K4 will exceed the 4.0 hardware
 #    limit (motor oscillation — HANDOFF §6.2).
-Q_POSITION   =  10.0    # x1 — wheel position  (m)
-Q_VELOCITY   =  3.0    # x2 — wheel velocity  (m/s)
-Q_PITCH      =  800   # x3 — pitch angle     (rad)
+Q_POSITION   =  450.0    # x1 — wheel position  (m)
+Q_VELOCITY   =  5.0    # x2 — wheel velocity  (m/s)
+Q_PITCH      =  100   # x3 — pitch angle     (rad)
 Q_PITCH_RATE =   15   # x4 — pitch rate      (rad/s)  ← do not exceed 3
 
-R_EFFORT     =   10.0   # control effort penalty (lower → more aggressive)
+R_EFFORT     =   1.0   # control effort penalty (lower → more aggressive)
 
 
 # ╔══════════════════════════════════════════════════════════════╗
@@ -112,7 +112,7 @@ _D0  = M_eff * _J0  - (mb*lb)**2
 
 C3 = M_eff * mb * g * lb / D
 C1 = (mb**2)*g*(lb**2)/D
-C2 = J_eff/(D*R), 
+C2 = J_eff/(D*R)
 C4 = mb*lb/(D*R)
 
 Cm1 =  2 * Kt / Rph   # motor force constant    (calibrated, both motors)
@@ -125,7 +125,7 @@ A = np.array([
     [0,                  0,      0,           1        ],
     [0,  (C4*Cm2)/R,     C3,   -(C4*Cm2)    ],
 ])
-B = np.array([[0], [C2*Cm1], [0], [-C4*Cm1]])
+B = np.array([[0], [-(C2*Cm1)], [0], [-C4*Cm1]])
 
 Q     = np.diag([Q_POSITION, Q_VELOCITY, Q_PITCH, Q_PITCH_RATE])
 R_lqr = np.array([[R_EFFORT]])

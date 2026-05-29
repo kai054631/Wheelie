@@ -8,10 +8,10 @@ volatile float shared_motor_voltage = 0.0; // share variable for taskbalance and
 //for 25 degree 2500mah
 int Servo_angle = 25; 
 float angle_offset = -0.2;
-float K1 = 0; // 轮子水平位置反馈 (Position) --- IGNORE ---
-float K2 = 0; // 轮子水平速度反馈 (Velocity) --- IGNORE ---
-float K3 = 260.0395;  // 车身倾斜角度反馈 (Pitch Angle in Rad) --- IGNORE ---
-float K4 = 7.1074;  // 车身陀螺仪角速度
+float K1 = -1; // 轮子水平位置反馈 (Position) --- IGNORE ---
+float K2 = 0.68; // 轮子水平速度反馈 (Velocity) --- IGNORE ---
+float K3 = 22.7933;  // 车身倾斜角度反馈 (Pitch Angle in Rad) --- IGNORE ---
+float K4 = 1.4611;  // 车身陀螺仪角速度
 
 // // // //for 45 degree
 // int Servo_angle = 45;      
