@@ -60,7 +60,7 @@ else:
     BODY_MOI_JB = 0.004        # fallback estimate — replace by measuring d and T above
 
 # ── 1d. Wheels ──────────────────────────────────────────────────
-WHEEL_MASS_KG  = 0.0145       # mass of ONE wheel (kg)
+WHEEL_MASS_KG  = 0.0145+0.020       # mass of ONE wheel (kg)
 WHEEL_RADIUS_M = 0.026        # wheel radius (m)
 
 # ── 1e. Motors  (2804 gimbal — confirmed hardware values) ────────
@@ -107,16 +107,15 @@ D     = M_eff * J_eff - (mb * lb)**2
 # C3: verified TWSB gravity-coupling term  A[3][2] = M_eff·mb·g·lb / D
 # C1: set equal to C3 (original script convention)
 # C2, C4: back-EMF damping — scaled from calibrated reference at lb = 78 mm
-_lb0 = 0.078
-_J0  = mb * _lb0**2 + Jb
-_D0  = M_eff * _J0  - (mb * _lb0)**2
+_J0  = mb*lb**2 + Jb
+_D0  = M_eff * _J0  - (mb*lb)**2
 
 C3 = M_eff * mb * g * lb / D
-C1 = C3
-C2 = 472.7512 * (J_eff / _J0) * (_D0 / D)
-C4 = 962.0834 * (lb   / _lb0) * (_D0 / D)
+C1 = (mb**2)*g*(lb**2)/D
+C2 = J_eff/(D*R), 
+C4 = mb*lb/(D*R)
 
-Cm1 = 0.0049  * 2    # motor force constant    (calibrated, both motors)
+Cm1 =  2 * Kt / Rph   # motor force constant    (calibrated, both motors)
 Cm2 = 0.000216 * 2   # motor back-EMF constant (calibrated, both motors)
 
 # State: x = [ position (m),  velocity (m/s),  pitch (rad),  pitch rate (rad/s) ]
