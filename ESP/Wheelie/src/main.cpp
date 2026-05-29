@@ -68,8 +68,8 @@ void TaskMotorCode(void *pv)
         motorR.enable();
       }
       float v = -shared_motor_voltage;
-      motorL.move(v);
-      motorR.move(v);
+      motorL.move(0.6);
+      motorR.move(0.6);
     }
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));
   }

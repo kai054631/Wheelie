@@ -21,7 +21,7 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   x2 = current.velocity - target.velocity;
   x3 = current.pitch_angle - angle_offset_rad - target.pitch_angle;
   x4 = current.gyro_rate - target.gyro_rate;
-  printf("angle_offset_rad: %.4f\n", angle_offset_rad);
+  // printf("angle_offset_rad: %.4f\n", angle_offset_rad);
   // Cap position error to ±0.2m so large drift doesn't dominate over pitch control
   x3 = constrain(x3, -0.2f, 0.2f);
 
