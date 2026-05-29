@@ -13,7 +13,8 @@ const char index_html[] PROGMEM = R"rawliteral(
     <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
     <style>
         body { font-family: Arial; text-align: center; background-color: #222; color: #fff; }
-        .card { background-color: #333; padding: 15px; margin: 20px auto; border-radius: 10px; max-width: 400px; }
+        .card { background-color: #333; padding: 15px; border-radius: 10px; flex: 1; min-width: 280px; }
+        .card-row { display: flex; gap: 20px; justify-content: center; margin: 20px auto; max-width: 860px; flex-wrap: wrap; }
         button { padding: 10px 20px; font-size: 16px; margin: 5px; cursor: pointer; background: #007BFF; color: white; border: none; border-radius: 5px; }
         button:active { background: #0056b3; }
         input { padding: 10px; font-size: 16px; width: 100px; text-align: center; margin-right: 10px; }
@@ -25,15 +26,25 @@ const char index_html[] PROGMEM = R"rawliteral(
     <h2>Wheelie Static LQR Tuning</h2>
     <p>Connection Status: <span id="status">Connecting...</span></p>
     
-    <div class="card">
-        <h3>Live Matrix Adjustments</h3>
-        <div class="tune-row"><label>K1 (Pos): </label><input type="number" id="valK1" step="0.1"><button onclick="updateK('K1')">Set</button></div>
-        <div class="tune-row"><label>K2 (Vel): </label><input type="number" id="valK2" step="0.1"><button onclick="updateK('K2')">Set</button></div>
-        <div class="tune-row"><label>K3 (Ang): </label><input type="number" id="valK3" step="0.1"><button onclick="updateK('K3')">Set</button></div>
-        <div class="tune-row"><label>K4 (Gyro):</label><input type="number" id="valK4" step="0.1"><button onclick="updateK('K4')">Set</button></div>
-        <div class="tune-row"><label>Offset: </label><input type="number" id="valO" step="0.1"><button onclick="updateK('O')">Set</button></div>
+    <div class="card-row">
+        <div class="card">
+            <h3>Live Matrix Adjustments</h3>
+            <div class="tune-row"><label>K1 (Pos): </label><input type="number" id="valK1" step="0.1"><button onclick="updateK('K1')">Set</button></div>
+            <div class="tune-row"><label>K2 (Vel): </label><input type="number" id="valK2" step="0.1"><button onclick="updateK('K2')">Set</button></div>
+            <div class="tune-row"><label>K3 (Ang): </label><input type="number" id="valK3" step="0.1"><button onclick="updateK('K3')">Set</button></div>
+            <div class="tune-row"><label>K4 (Gyro):</label><input type="number" id="valK4" step="0.1"><button onclick="updateK('K4')">Set</button></div>
+            <div class="tune-row"><label>Servo_angle: </label><input type="number" id="valS" step="0.1"><button onclick="updateK('S')">Set</button></div>
+            <div class="tune-row"><label>Offset: </label><input type="number" id="valO" step="0.01"><button onclick="updateK('O')">Set</button></div>
+        </div>
+        <div class="card">
+            <h3>Target State</h3>
+            <div class="tune-row"><label>Target Pos (m): </label><input type="number" id="valTP" step="0.01" value="0"><button onclick="updateK('TP')">Set</button></div>
+            <div class="tune-row"><label>Target Vel (m/s): </label><input type="number" id="valTV" step="0.01" value="0"><button onclick="updateK('TV')">Set</button></div>
+            <div class="tune-row"><label>Target Pitch (rad): </label><input type="number" id="valTA" step="0.001" value="0"><button onclick="updateK('TA')">Set</button></div>
+            <div class="tune-row"><label>Target Gyro (rad/s): </label><input type="number" id="valTG" step="0.001" value="0"><button onclick="updateK('TG')">Set</button></div>
+        </div>
     </div>
-
+    <button onclick="resetErrors()">Reset X1-X4</button>
     <script>
         var gateway = `ws://${window.location.hostname}/ws`;
         var websocket;
@@ -63,6 +74,12 @@ const char index_html[] PROGMEM = R"rawliteral(
                 // This will force the raw CSV lines straight into your browser console logs
                 console.log("DATA RECEIVED: " + event.data); 
             };
+            
+        }
+        function resetErrors() {
+            fetch('/reset')
+            .then(response => console.log('Errors reset OK'))
+            .catch(err => console.log('Reset failed: ', err));
         }
 
         function updateK(type) {
@@ -84,22 +101,22 @@ const char index_html[] PROGMEM = R"rawliteral(
 
 void setupWebServer()
 {
-     Serial.println("Starting WiFi AP...");
-     WiFi.mode(WIFI_AP);
-     WiFi.softAP("Wheelie_Robot", "12345678");
+    Serial.println("Starting WiFi AP...");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("Wheelie_Robot", "12345678");
 
-     IPAddress IP = WiFi.softAPIP();
-     Serial.print("AP Started! Connect to 'Wheelie_Robot' and open: ");
-     Serial.println(IP);
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP Started! Connect to 'Wheelie_Robot' and open: ");
+    Serial.println(IP);
 
-     server.addHandler(&ws);
+    server.addHandler(&ws);
 
-     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
-               { request->send(200, "text/html", index_html); });
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send(200, "text/html", index_html); });
 
-     // Handle updates for values submitted by input text boxes
-     server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request)
-               {
+    // Handle updates for values submitted by input text boxes
+    server.on("/set", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
         if (request->hasParam("type") && request->hasParam("val")) {
             String type = request->getParam("type")->value();
             float val = request->getParam("val")->value().toFloat();
@@ -108,11 +125,20 @@ void setupWebServer()
             else if (type == "K2") K2 = val;
             else if (type == "K3") K3 = val;
             else if (type == "K4") K4 = val;
+            else if (type == "S") Servo_angle = val;
             else if (type == "O") angle_offset = val;
+            else if (type == "TP") target.position = val;
+            else if (type == "TV") target.velocity = val;
+            else if (type == "TA") target.pitch_angle = val;
+            else if (type == "TG") target.gyro_rate = val;
             
             Serial.printf("Updated via Web: %s = %.4f\n", type.c_str(), val);
         }
         request->send(200); });
+    server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+    position_offset = get_average_distance_meters();
+    request->send(200); });
 
-     server.begin();
+    server.begin();
 }

@@ -40,6 +40,9 @@ extern float x2; // error in velocity, in meters per second
 extern float x3; // error in pitch angle, in radians
 extern float x4; // error in gyro rate, in radians per second
 
+extern float position_offset; // reference position, updated on reset
+extern RobotState target;
+
 //--- auto calibrate angle offset for the pitch angle ---
 extern float average_speed;   //in m/s
 
