@@ -15,6 +15,9 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   // Slow drift: position_offset follows actual position with tau ~20s.
   // Prevents x1 from growing unbounded after a disturbance, which would
   // otherwise create a large correction voltage that fights against balance.
+  const float tau = 20.0f;   // seconds — how fast offset tracks drift
+  const float dt  = 0.005f;  // balance task period (5 ms)
+  position_offset += (current.position - target.position - position_offset) * (dt / tau);
 
   // 计算误差向量
   x1 = current.position - position_offset - target.position;
@@ -25,6 +28,9 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   // Cap position error to ±0.2m so large drift doesn't dominate over pitch control
   // x3 = constrain(x3, -0.2f, 0.2f);
 
+  // if(abs(x1)<0.1){
+  //   x1=0;
+  // }
   // 状态空间核心：u = -(K*x)
   float voltage = -((K1 * x1) + (K2 * x2) + (K3 * x3) + (K4 * x4));
   return constrain(voltage, -8.0f, 8.0f);

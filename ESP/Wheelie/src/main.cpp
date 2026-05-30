@@ -7,11 +7,11 @@ volatile float shared_motor_voltage = 0.0; // share variable for taskbalance and
 
 //for 25 degree 2500mah
 int Servo_angle = 25; 
-float angle_offset = -0.18;
-float K1 = 0; // 轮子水平位置反馈 (Position) --- IGNORE ---
-float K2 = 0; // 轮子水平速度反馈 (Velocity) --- IGNORE ---
-float K3 = 22.99;  // 车身倾斜角度反馈 (Pitch Angle in Rad) --- IGNORE ---
-float K4 = 1.17;  // 车身陀螺仪角速度
+float angle_offset = -0.232;
+float K1 = -0.3162f; // 轮子水平位置反馈 (Position)
+float K2 = -3.5285f; // 轮子水平速度反馈 (Velocity)
+float K3 = 15.6848f; // 车身倾斜角度反馈 (Pitch Angle in Rad)
+float K4 = 2.2882f;  // 车身陀螺仪角速度
 
 // // // //for 45 degree
 // int Servo_angle = 45;      
@@ -125,7 +125,7 @@ void TaskMonitorCode(void *pv)
     snprintf(buffer, sizeof(buffer),
              "meter_error:%.2f| x1: %.2f, x2: %.2f, x3: %.2f, x4: %.2f, Pitch_Angle: %.2f, Voltage: %.2f, Left_Velocity: %.2f, Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f, Temperature: %.2f\n",
              x1,K1*x1, K2 * x2, K3 * x3, K4 * x4, 
-             currentState.pitch_angle, shared_motor_voltage, 
+             currentState.pitch_angle, -shared_motor_voltage, 
              motorL.shaftVelocity(), motorR.shaftVelocity(), 
              encoderL.getAngle(), encoderR.getAngle()
              ,mpu.getTemp());

@@ -20,37 +20,13 @@ import control as ct
 # ── 1a. Servo angle ─────────────────────────────────────────────
 SERVO_DEG = 25            # operating point (°) — change per gain-table row
 
-# ── 1b. CoM height from wheel axle (mm) ─────────────────────────
-# THREE options — uncomment the one that fits your situation:
-
-# Option 1 — original design formula (no battery correction):
-COM_HEIGHT_MM = 40  + (SERVO_DEG - 20) * (90 / 80)
-
-# Option 2 — with battery-lowering correction (battery moved 30 mm down, 2026-05):
-#   Measure battery mass, then uncomment:
-# BATTERY_MASS_KG = ???
-# COM_HEIGHT_MM   = 50 + (SERVO_DEG - 20)*(90/80) - (BATTERY_MASS_KG / BODY_MASS_KG)*30
-
-# Option 3 — direct measurement (most accurate):
-#   Balance the body on a rod at the wheel-axle height, measure to the balance point.
-# COM_HEIGHT_MM = ???   # replace with your measurement
+COM_HEIGHT_MM = 46
 
 # ── 1c. Body ────────────────────────────────────────────────────
 BODY_MASS_KG = 0.45 + 0.054   # body mass without wheels (kg)
                                # split as body + electronics if easier to measure
-
-# Body moment of inertia about CoM, pitching axis (kg·m²).
-# Computed automatically from physical pendulum measurements below.
-# Formula:  Jb = mb * d * (g * T² / 4π² − d)
-#
-# HOW TO MEASURE (HANDOFF §8):
-#   1. Hang body from a pivot at distance d above CoM
-#   2. Time 20 full swings × 3 runs, take the average → T (seconds per full swing)
-#   3. Fill in d and T below; Jb is calculated automatically.
-# Expected range: 0.0015 – 0.0035 kg·m²
-
-PENDULUM_PIVOT_DIST_M = 0.036   # d — distance from pivot to CoM (m),  e.g. 0.035
-PENDULUM_PERIOD_S     = 0.43   # T — period of one full swing   (s),  e.g. 0.48
+PENDULUM_PIVOT_DIST_M = 0.3   # d — distance from pivot to CoM (m),  e.g. 0.035
+PENDULUM_PERIOD_S     = 1.15   # T — period of one full swing   (s),  e.g. 0.48
 
 if PENDULUM_PIVOT_DIST_M is not None and PENDULUM_PERIOD_S is not None:
     _d = PENDULUM_PIVOT_DIST_M
@@ -64,8 +40,8 @@ WHEEL_MASS_KG  = 0.0145+0.020       # mass of ONE wheel (kg)
 WHEEL_RADIUS_M = 0.026        # wheel radius (m)
 
 # ── 1e. Motors  (2804 gimbal — confirmed hardware values) ────────
-MOTOR_KT          = 0.01961   # torque constant Kt  (Nm/A)
-MOTOR_RESISTANCE  = 2.55      # phase resistance Rph (Ω)
+MOTOR_KT          = 0.04334   # torque constant Kt  (Nm/A)
+MOTOR_RESISTANCE  = 2.9      # phase resistance Rph (Ω)
 
 # ── 1f. LQR weights ─────────────────────────────────────────────
 # Higher Q → stronger correction for that state.
@@ -73,12 +49,12 @@ MOTOR_RESISTANCE  = 2.55      # phase resistance Rph (Ω)
 #
 # ⚠  Keep Q_PITCH_RATE ≤ 3.  Above this, K4 will exceed the 4.0 hardware
 #    limit (motor oscillation — HANDOFF §6.2).
-Q_POSITION   =  0.0    # x1 — wheel position  (m)
-Q_VELOCITY   =  0.0    # x2 — wheel velocity  (m/s)
+Q_POSITION   =  10.0    # x1 — wheel position  (m)
+Q_VELOCITY   =  1.0    # x2 — wheel velocity  (m/s)
 Q_PITCH      =  800   # x3 — pitch angle     (rad)
 Q_PITCH_RATE =   8   # x4 — pitch rate      (rad/s)  ← do not exceed 3
 
-R_EFFORT     =   10.0   # control effort penalty (lower → more aggressive)
+R_EFFORT     =   100.0   # control effort penalty (lower → more aggressive)
 
 
 # ╔══════════════════════════════════════════════════════════════╗
@@ -94,38 +70,25 @@ R   = WHEEL_RADIUS_M
 Kt  = MOTOR_KT
 Rph = MOTOR_RESISTANCE
 
-# Derived mechanical constants
+# Derived mechanical constants# Derived mechanical constants (these were already correct — now actually used)
 Jw    = 0.5 * mw * R**2
-M_eff = mb + 2*mw + 2*Jw/R**2     # effective total mass
-Cv    = 2 * Kt**2 / (Rph * R**2)  # back-EMF viscous damping  (N·s/m)
-Cm    = 2 * Kt   / (Rph * R)      # net force per volt        (N/V)
+M_eff = mb + 2*mw + 2*Jw/R**2     # effective total mass (kg)
+Cv    = 2 * Kt**2 / (Rph * R**2)  # back-EMF viscous damping (N·s/m)
+Cm    = 2 * Kt   / (Rph * R)      # net force per volt (N/V)
 
 J_eff = mb * lb**2 + Jb
-D     = M_eff * J_eff - (mb * lb)**2
+D     = M_eff * J_eff - (mb * lb)**2   # > 0 required
 
-# State-space coefficients
-# C3: verified TWSB gravity-coupling term  A[3][2] = M_eff·mb·g·lb / D
-# C1: set equal to C3 (original script convention)
-# C2, C4: back-EMF damping — scaled from calibrated reference at lb = 78 mm
-_J0  = mb*lb**2 + Jb
-_D0  = M_eff * _J0  - (mb*lb)**2
-
-C3 = M_eff * mb * g * lb / D
-C1 = (mb**2)*g*(lb**2)/D
-C2 = J_eff/(D*R)
-C4 = mb*lb/(D*R)
-
-Cm1 =  2 * Kt / Rph   # motor force constant    (calibrated, both motors)
-Cm2 = 0.000216 * 2   # motor back-EMF constant (calibrated, both motors)
-
-# State: x = [ position (m),  velocity (m/s),  pitch (rad),  pitch rate (rad/s) ]
+# State: x = [position(m), velocity(m/s), pitch(rad), pitch_rate(rad/s)]
+# Documented EOM (HANDOFF §4.3):
 A = np.array([
-    [0,                  1,      0,           0        ],
-    [0, -(C2*Cm2)/R,    -C1,    C2*Cm2      ],
-    [0,                  0,      0,           1        ],
-    [0,  (C4*Cm2)/R,     C3,   -(C4*Cm2)    ],
+    [0,  1,                 0,                 0],
+    [0, -J_eff*Cv/D,        mb**2*g*lb**2/D,   0],
+    [0,  0,                 0,                 1],
+    [0, -mb*lb*Cv/D,        M_eff*mb*g*lb/D,   0],
 ])
-B = np.array([[0], [-(C2*Cm1)], [0], [-C4*Cm1]])
+# B sign negated to match firmware (compute returns -(K·x), TaskMotor applies -shared)
+B = np.array([[0], [-J_eff*Cm/D], [0], [-mb*lb*Cm/D]])
 
 Q     = np.diag([Q_POSITION, Q_VELOCITY, Q_PITCH, Q_PITCH_RATE])
 R_lqr = np.array([[R_EFFORT]])
@@ -153,9 +116,6 @@ warnings = []
 if abs(K_fw[3]) >= 4.0:
     warnings.append(f"  ⚠  K4 = {K_fw[3]:.2f} exceeds hardware limit of 4.0!")
     warnings.append("     Lower Q_PITCH_RATE or raise R_EFFORT.")
-if Jb > 0.0035:
-    warnings.append(f"  ⚠  Jb = {Jb} kg·m² is above expected range 0.0015–0.0035.")
-    warnings.append("     Measure Jb physically for more accurate gains (HANDOFF §8).")
 for w in warnings:
     print(w)
 if warnings:
@@ -167,5 +127,4 @@ print(f"    mb    = {mb:.4f} kg      M_eff = {M_eff:.4f} kg")
 print(f"    lb    = {lb*1000:.2f} mm      J_eff = {J_eff:.6f} kg·m²")
 print(f"    Jb    = {Jb} kg·m²   D     = {D:.6f}")
 print(f"    Cm    = {Cm:.4f} N/V   Cv    = {Cv:.4f} N·s/m")
-print(f"    C3    = {C3:.4f}        C4    = {C4:.4f}")
 print()

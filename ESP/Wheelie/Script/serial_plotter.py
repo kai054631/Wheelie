@@ -26,7 +26,7 @@ PORT = None           # set below
 ALL_KEYS = ["x1", "x2", "x3", "x4",
             "Pitch_Angle", "Voltage",
             "Left_Velocity", "Right_Velocity",
-            "Motor_L_Angle", "Motor_R_Angle"]
+            "Motor_L_Angle", "Motor_R_Angle","Pitch_gyro"]
 
 DEFAULT_PLOT = ["Pitch_Angle", "Voltage", "x3"]  # change to taste
 
