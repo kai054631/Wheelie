@@ -9,69 +9,66 @@
 #include <WiFi.h>
 
 // --- 引脚定义 ---
-// mpu6050 pin
 #define I2C_SDA 2
 #define I2C_SCL 1
-//servo pin
 #define SERVO_L_PIN 4
 #define SERVO_R_PIN 5
 
-// --- 全局变量声明 (extern 表示实现在其他地方) ---
+#define WHEEL_RADIUS_M 0.026f   // wheel radius (m)
+#define WHEEL_BASE_M   0.16f    // distance between wheel contact points (m) — tune if yaw is reversed
+
+// --- 全局变量声明 ---
 extern float angle_offset;
 extern volatile float Pitch_angle, Pitch_gyro;
-extern volatile float shared_motor_voltage;
+extern volatile float shared_motor_voltage_L, shared_motor_voltage_R;
 extern int Servo_angle;
-// state_space_variable
+
 struct RobotState
 {
-     float position;
-     float velocity;
-     float pitch_angle;
-     float gyro_rate;
+    float position;
+    float velocity;
+    float pitch_angle;
+    float gyro_rate;
 };
 
-extern float K1 ; // 轮子水平位置反馈 (Position)
-extern float K2 ;  // 轮子水平速度反馈 (Velocity)
-extern float K3 ;   // 车身倾斜角度反馈 (Pitch Angle in Rad)
-extern float K4 ;   // 车身陀螺仪角速度反馈 (Gyro Rate in Rad/s)
+extern float K1;   // wheel position feedback
+extern float K2;   // wheel velocity feedback
+extern float K3;   // pitch angle feedback
+extern float K4;   // pitch rate feedback
+extern float K5;   // yaw angle gain   (psi)
+extern float K6;   // yaw rate gain    (psi_dot)
 
-extern float x1; // error in position, in meters
-extern float x2; // error in velocity, in meters per second
-extern float x3; // error in pitch angle, in radians
-extern float x4; // error in gyro rate, in radians per second
+extern float x1, x2, x3, x4;
 
-extern float position_offset; // reference position, updated on reset
+extern float position_offset;
 extern RobotState target;
 
-//--- auto calibrate angle offset for the pitch angle ---
-extern float average_speed;   //in m/s
+// yaw state
+extern float yaw_angle;    // psi (rad), integrated from wheel differential
+extern float yaw_rate;     // psi_dot (rad/s)
+extern float yaw_ref;      // heading setpoint (rad)
+extern bool  yaw_enabled;  // heading-hold on/off
+
+extern float average_speed;
 
 // --- 硬件对象声明 ---
-//mpu6050
 extern MPU6050 mpu;
-//2804 bldc motor
 extern BLDCMotor motorL, motorR;
 extern BLDCDriver3PWM driverL, driverR;
 extern Encoder encoderL, encoderR;
-//servo
 extern MyServo LeftServo, RightServo;
-//web server
 extern AsyncWebServer server;
-extern AsyncWebSocket ws; // 添加这一行
+extern AsyncWebSocket ws;
 
 // --- 函数原型 ---
-//kalman filter update function
 float kalmanUpdate(float newAngle, float newRate, float dt);
-//encoder interrupt handlers
-void doLA(); 
-void doLB(); 
-void doRA(); 
+void doLA();
+void doLB();
+void doRA();
 void doRB();
-
-//web server setup function
 void setupWebServer();
-
 float compute_LQR_balancing_voltage(RobotState current, RobotState target, float angle_offset_deg);
+float compute_yaw_voltage(float psi, float psi_dot, float psi_ref);
 float get_average_distance_meters();
 float get_average_velocity_mps();
 

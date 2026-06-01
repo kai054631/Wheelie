@@ -1,29 +1,32 @@
 #include "config.h"
 
 // --- 变量定义 ---
-// float angle_offset = -0.22; // in radians — tune via web UI to stop drift
 volatile float Pitch_angle = 0.0, Pitch_gyro = 0.0;
-volatile float shared_motor_voltage = 0.0; // share variable for taskbalance and taskmotor
+volatile float shared_motor_voltage_L = 0.0;
+volatile float shared_motor_voltage_R = 0.0;
 
-//for 25 degree 2500mah
-int Servo_angle = 25; 
-float angle_offset = -0.232;
-float K1 = -0.3162f; // 轮子水平位置反馈 (Position)
-float K2 = -3.5285f; // 轮子水平速度反馈 (Velocity)
-float K3 = 15.6848f; // 车身倾斜角度反馈 (Pitch Angle in Rad)
-float K4 = 2.2882f;  // 车身陀螺仪角速度
+struct profile
+{
+  int servo_angle;
+  float angle_offset;
+  float K1;
+  float K2;
+  float K3;
+  float K4;
+  float K5;
+  float K6;
+} profile_list[] =
+    {
+        {25, -0.2, -8, -15, 52.07, 4, 2, 0.343f},
+        {45, -0.14, -8, -12, 56.6, 4, 2, 0.343f},
+        {65, -0.07, -10, -15, 59.79, 2.77, 2, 0.343f},
+        {85, 0.0, -8, -13, 61, 4, 2, 0.343f}}
 
-// // // //for 45 degree
-// int Servo_angle = 45;      
-// float angle_offset = -0.17;
-// float K1 = -10.0f;       // 轮子水平位置反馈 — disabled until pitch stable
-// float K2 = -2.0f;       // 轮子水平速度反馈 — disabled until pitch stable
-// float K3 = 75.0f;      // 车身倾斜角度反馈 — saturates at 6.5°, safe for startup
-// float K4 = 1.5f;       // 车身陀螺仪角速度
-
+;
 RobotState currentState;
-RobotState target = {0.0f, 0.0f, 0.0f, 0.0f};           // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
-// --- 硬件对象定义 ---2.2052531
+RobotState target = {0.0f, 0.0f, 0.0f, 0.0f}; // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
+
+// --- 硬件对象定义 ---
 MPU6050 mpu(Wire);
 BLDCMotor motorL(7), motorR(7);
 BLDCDriver3PWM driverL(14, 13, 12, 11), driverR(16, 15, 7, 6);
@@ -47,7 +50,7 @@ void TaskMotorCode(void *pv)
   TickType_t xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    if (abs(currentState.pitch_angle-angle_offset) > 0.4f)
+    if (abs(currentState.pitch_angle - angle_offset) > 0.4f)
     {
       // Only call disable if the motor is currently running
       if (motorL.enabled)
@@ -67,15 +70,14 @@ void TaskMotorCode(void *pv)
         motorL.enable();
         motorR.enable();
       }
-      float v = -shared_motor_voltage;
-      motorL.move(v);
-      motorR.move(v);
+      motorL.move(-shared_motor_voltage_L);
+      motorR.move(-shared_motor_voltage_R);
     }
     vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));
   }
 }
 
-// --- 任务：姿态计算 (Core 0) ---
+// --- 任务：姿态计算 + 偏航控制 (Core 0) ---
 void TaskBalanceCode(void *pv)
 {
   unsigned long lastTime = millis();
@@ -86,18 +88,26 @@ void TaskBalanceCode(void *pv)
     float dt = (now - lastTime) / 1000.0f;
     lastTime = now;
     Pitch_angle = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt);
-    // Low-pass filter gyro (α=0.25, τ≈6ms) — suppresses vibration noise fed into K4
     static float gyro_filtered = 0.0f;
-    gyro_filtered = 0.08f * mpu.getGyroY() + 0.92f * gyro_filtered;
+    gyro_filtered = 0.95f * mpu.getGyroY() + 0.05f * gyro_filtered;
     Pitch_gyro = gyro_filtered;
 
     currentState.position = get_average_distance_meters();
     currentState.velocity = get_average_velocity_mps();
-    currentState.pitch_angle = Pitch_angle * (PI / 180.0f); // in radian/s
-    currentState.gyro_rate = Pitch_gyro * (PI / 180.0f);    // in rad/s
-    
-    // 使用你新定义的函数计算电压
-    shared_motor_voltage = compute_LQR_balancing_voltage(currentState, target, angle_offset);
+    currentState.pitch_angle = Pitch_angle * (PI / 180.0f);
+    currentState.gyro_rate = Pitch_gyro * (PI / 180.0f);
+
+    // yaw rate from wheel speed differential; positive => turning left (CCW from above)
+    yaw_rate = (motorR.shaftVelocity() - motorL.shaftVelocity()) * WHEEL_RADIUS_M / WHEEL_BASE_M;
+    yaw_angle += yaw_rate * dt;
+
+    float v = compute_LQR_balancing_voltage(currentState, target, angle_offset);
+    float dv = compute_yaw_voltage(yaw_angle, yaw_rate, yaw_ref);
+
+    // u_L = v - dv,  u_R = v + dv
+    shared_motor_voltage_L = v + dv;
+    shared_motor_voltage_R = v - dv;
+
     vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
@@ -107,29 +117,31 @@ void TaskServoCode(void *pvParameters)
 {
   for (;;)
   {
-     int servo_angle = constrain(Servo_angle, 20, 100);
-        LeftServo.write(servo_angle);
-        RightServo.write(servo_angle);
-        vTaskDelay(100 / portTICK_PERIOD_MS);
+    int servo_angle = constrain(Servo_angle, 20, 100);
+    int right_trim = (int)roundf(0.06f * servo_angle - 1.3f);
+    int right_angle = constrain(servo_angle + right_trim, 20, 100);
+    LeftServo.write(180 - servo_angle);
+    RightServo.write(right_angle);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
 
 // --- 任务：监控 (Core 0) ---
 void TaskMonitorCode(void *pv)
 {
-  char buffer[256];
+  char buffer[320];
   for (;;)
   {
-    // Serial.printf("Motor_Speed: %.2f | Voltage:%.2f | Pitch Angle: %.2f\n", motorL.shaftVelocity(), shared_motor_voltage, Pitch_angle);
-    // Serial.printf(" x1: %.2f, x2: %.2f ,x3: %.2f ,x4: %.2f , Pitch_Angle: %.2f , Voltage: %.2f , Left_Velocity: %.2f , Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f\n", K1 * x1, K2 * x2, K3 * x3, K4 * x4, currentState.pitch_angle, shared_motor_voltage, motorL.shaftVelocity(), motorR.shaftVelocity(), encoderL.getAngle(), encoderR.getAngle());
     snprintf(buffer, sizeof(buffer),
-             "meter_error:%.2f| x1: %.2f, x2: %.2f, x3: %.2f, x4: %.2f, Pitch_Angle: %.2f, Voltage: %.2f, Left_Velocity: %.2f, Right_Velocity: %.2f, Motor_L_Angle: %.2f, Motor_R_Angle: %.2f, Temperature: %.2f\n",
-             x1,K1*x1, K2 * x2, K3 * x3, K4 * x4, 
-             currentState.pitch_angle, -shared_motor_voltage, 
-             motorL.shaftVelocity(), motorR.shaftVelocity(), 
-             encoderL.getAngle(), encoderR.getAngle()
-             ,mpu.getTemp());
-    // snprintf(buffer,sizeof(buffer)," position: %.2f | target:%.2f \n",currentState.position,target.position);
+             "meter_error:%.2f x1:%.2f x2:%.2f x3:%.2f x4:%.2f Pitch_Angle:%.3f Voltage:%.2f VL:%.2f VR:%.2f yaw_angle:%.3f yaw_rate:%.3f Left_Velocity:%.2f Right_Velocity:%.2f Motor_L_Angle:%.2f Motor_R_Angle:%.2f Temp:%.1f\n",
+             x1, K1 * x1, K2 * x2, K3 * x3, K4 * x4,
+             currentState.pitch_angle,
+             -(shared_motor_voltage_L + shared_motor_voltage_R) * 0.5f,
+             -shared_motor_voltage_L, -shared_motor_voltage_R,
+             yaw_angle, yaw_rate,
+             motorL.shaftVelocity(), motorR.shaftVelocity(),
+             encoderL.getAngle(), encoderR.getAngle(),
+             mpu.getTemp());
     ws.cleanupClients();
     ws.textAll(buffer);
     Serial.print(buffer);
@@ -178,10 +190,9 @@ void setup()
   motorR.controller = MotionControlType::torque;
   motorR.voltage_sensor_align = 5;
   motorR.init();
-  // runMotor = true;
 
   // Servo
-  LeftServo.setup(SERVO_L_PIN, 2000, 1000);
+  LeftServo.setup(SERVO_L_PIN, 1000, 2000);
   RightServo.setup(SERVO_R_PIN, 1000, 2000);
 
   // 创建任务 (注意优先级：电机最高)

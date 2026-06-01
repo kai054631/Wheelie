@@ -24,11 +24,12 @@ WINDOW = 200          # number of samples shown on screen
 PORT = None           # set below
 
 ALL_KEYS = ["x1", "x2", "x3", "x4",
-            "Pitch_Angle", "Voltage",
+            "Pitch_Angle", "Voltage", "VL", "VR",
             "Left_Velocity", "Right_Velocity",
-            "Motor_L_Angle", "Motor_R_Angle","Pitch_gyro"]
+            "Motor_L_Angle", "Motor_R_Angle",
+            "yaw_angle", "yaw_rate", "Temp"]
 
-DEFAULT_PLOT = ["Pitch_Angle", "Voltage", "x3"]  # change to taste
+DEFAULT_PLOT = ["Pitch_Angle", "Voltage", "yaw_angle"]  # change to taste
 
 # --- Argument parsing ---
 args = sys.argv[1:]
