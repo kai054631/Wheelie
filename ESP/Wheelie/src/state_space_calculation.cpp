@@ -1,11 +1,28 @@
 #include "config.h"
 
+Profile profile_list[] = {
+    { 25, -0.23f,  -8.0f, -15.0f, 52.07f, 4.00f, 2.0f, 0.343f },
+    { 45, -0.16f,  -8.0f, -12.0f, 56.60f, 4.00f, 2.0f, 0.343f },
+    { 65, -0.10f, -10.0f, -15.0f, 59.79f, 2.77f, 2.0f, 0.343f },
+    { 85, -0.07f,  -8.0f, -13.0f, 61.00f, 4.00f, 2.0f, 0.343f },
+};
+const int N_PROFILES = sizeof(profile_list) / sizeof(profile_list[0]);
+
 float average_speed = 0;
 float x1 = 0.0f;
 float x2 = 0.0f;
 float x3 = 0.0f;
 float x4 = 0.0f;
 float position_offset = 0.0f;
+
+float K1 = profile_list[0].K1;
+float K2 = profile_list[0].K2;
+float K3 = profile_list[0].K3;
+float K4 = profile_list[0].K4;
+float K5 = profile_list[0].K5;
+float K6 = profile_list[0].K6;
+float angle_offset = profile_list[0].angle_offset;
+int   Servo_angle  = profile_list[0].servo_angle;
 
 // --- yaw state ---
 float yaw_angle   = 0.0f;
@@ -51,3 +68,5 @@ float get_average_velocity_mps()
 {
   return -((motorL.shaftVelocity() + motorR.shaftVelocity()) / 2.0f) * WHEEL_RADIUS_M;
 }
+
+//yaw angle control

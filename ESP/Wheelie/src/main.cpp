@@ -5,24 +5,6 @@ volatile float Pitch_angle = 0.0, Pitch_gyro = 0.0;
 volatile float shared_motor_voltage_L = 0.0;
 volatile float shared_motor_voltage_R = 0.0;
 
-struct profile
-{
-  int servo_angle;
-  float angle_offset;
-  float K1;
-  float K2;
-  float K3;
-  float K4;
-  float K5;
-  float K6;
-} profile_list[] =
-    {
-        {25, -0.2, -8, -15, 52.07, 4, 2, 0.343f},
-        {45, -0.14, -8, -12, 56.6, 4, 2, 0.343f},
-        {65, -0.07, -10, -15, 59.79, 2.77, 2, 0.343f},
-        {85, 0.0, -8, -13, 61, 4, 2, 0.343f}}
-
-;
 RobotState currentState;
 RobotState target = {0.0f, 0.0f, 0.0f, 0.0f}; // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
 
@@ -196,6 +178,7 @@ void setup()
   RightServo.setup(SERVO_R_PIN, 1000, 2000);
 
   // 创建任务 (注意优先级：电机最高)
+  applyProfile(0);
   xTaskCreatePinnedToCore(TaskMotorCode, "MotorTask", 10000, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(TaskBalanceCode, "BalanceTask", 10000, NULL, 2, NULL, 0);
   xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask", 5000, NULL, 1, NULL, 0);

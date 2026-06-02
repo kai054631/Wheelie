@@ -23,6 +23,15 @@ extern volatile float Pitch_angle, Pitch_gyro;
 extern volatile float shared_motor_voltage_L, shared_motor_voltage_R;
 extern int Servo_angle;
 
+struct Profile {
+    int   servo_angle;
+    float angle_offset;
+    float K1, K2, K3, K4, K5, K6;
+};
+
+extern Profile profile_list[];
+extern const int N_PROFILES;
+
 struct RobotState
 {
     float position;
@@ -50,6 +59,9 @@ extern float yaw_ref;      // heading setpoint (rad)
 extern bool  yaw_enabled;  // heading-hold on/off
 
 extern float average_speed;
+
+extern int  active_profile;
+extern void applyProfile(int idx);
 
 // --- 硬件对象声明 ---
 extern MPU6050 mpu;
