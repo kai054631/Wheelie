@@ -1,11 +1,12 @@
 {
 	"folders": [
 		{
-			"path": "../../.."
-		},
-		{
 			"name": "Wheelie",
 			"path": ".."
+		},
+		{
+			"name": "servo calibration",
+			"path": "../../servo calibration"
 		}
 	],
 	"settings": {}

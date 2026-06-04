@@ -4,28 +4,6 @@
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 
-int active_profile = 0;
-
-// ── Apply a profile by index ──────────────────────────────────────────────────
-void applyProfile(int idx) {
-    if (idx < 0 || idx >= N_PROFILES) return;
-    active_profile = idx;
-    const Profile &p = profile_list[idx];
-    Servo_angle  = p.servo_angle;
-    angle_offset = p.angle_offset;
-    K1 = p.K1;  K2 = p.K2;
-    K3 = p.K3;  K4 = p.K4;
-    K5 = p.K5;  K6 = p.K6;
-    // Snap position integrator and zero targets so x1 doesn't spike
-    position_offset  = get_average_distance_meters();
-    target.position  = 0.0f;
-    target.velocity  = 0.0f;
-    // Lock yaw reference to current heading so yaw control doesn't fight the transition
-    yaw_ref = yaw_angle;
-    Serial.printf("[profile] switched to %d — servo=%d° K3=%.2f K4=%.2f offset=%.3f\n",
-                  idx, p.servo_angle, p.K3, p.K4, p.angle_offset);
-}
-
 // ── HTML dashboard ────────────────────────────────────────────────────────────
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -91,6 +69,15 @@ const char index_html[] PROGMEM = R"rawliteral(
             <div class="tune-row"><label>Target Gyro(rad/s):</label><input type="number" id="valTG" step="0.001" value="0"><button onclick="setVal('TG')">Set</button></div>
         </div>
 
+        <!-- ── K1–K4 gain tuning ── -->
+        <div class="card">
+            <h3>LQR Gains (K1–K4)</h3>
+            <div class="tune-row"><label>K1 (pos):   </label><input type="number" id="valK1" step="0.1"><button onclick="setVal('K1')">Set</button></div>
+            <div class="tune-row"><label>K2 (vel):   </label><input type="number" id="valK2" step="0.1"><button onclick="setVal('K2')">Set</button></div>
+            <div class="tune-row"><label>K3 (pitch): </label><input type="number" id="valK3" step="0.1"><button onclick="setVal('K3')">Set</button></div>
+            <div class="tune-row"><label>K4 (gyro):  </label><input type="number" id="valK4" step="0.1"><button onclick="setVal('K4')">Set</button></div>
+        </div>
+
         <!-- ── Yaw control ── -->
         <div class="card">
             <h3>Yaw Control</h3>
@@ -98,9 +85,50 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <button id="yawToggleBtn" onclick="toggleYaw()">Yaw: ON</button>
                 <button onclick="lockHeading()">Lock Heading</button>
             </div>
-            <div class="profile-info" id="yawInfo">Heading hold active</div>
+            <div class="tune-row" style="margin-top:10px">
+                <label>Target Yaw (°): </label>
+                <input type="number" id="valTY" step="5" value="0" style="width:80px">
+                <button onclick="setYaw()">Set</button>
+            </div>
+            <div style="display:flex;gap:6px;justify-content:center;margin-top:8px">
+                <button onclick="nudgeYaw(-15)">−15°</button>
+                <button onclick="nudgeYaw(-5)">−5°</button>
+                <button onclick="nudgeYaw(+5)">+5°</button>
+                <button onclick="nudgeYaw(+15)">+15°</button>
+            </div>
+            <div class="profile-info" id="yawInfo" style="margin-top:8px">Heading hold active</div>
+            <div class="profile-info">
+                Heading: <span id="yawHeading">—</span>°
+                &nbsp;|&nbsp; Ref: <span id="yawRef">0.0</span>°
+                &nbsp;|&nbsp; Error: <span id="yawErrDeg">—</span>°
+            </div>
         </div>
 
+    </div>
+
+    <!-- ── State Monitor ── -->
+    <div style="max-width:700px;margin:0 auto 20px auto">
+        <div class="card">
+            <h3>State Monitor</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:14px">
+                <thead>
+                    <tr style="border-bottom:1px solid #555">
+                        <th style="padding:6px;text-align:left;color:#aaa">State</th>
+                        <th style="padding:6px;color:#4af">Current</th>
+                        <th style="padding:6px;color:#fa4">Target</th>
+                        <th style="padding:6px;color:#f66">Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td style="padding:5px;text-align:left">Position (m)</td><td id="sm_cur_pos">—</td><td id="sm_tgt_pos">—</td><td id="sm_x1">—</td></tr>
+                    <tr style="background:#2a2a2a"><td style="padding:5px;text-align:left">Velocity (m/s)</td><td id="sm_cur_vel">—</td><td id="sm_tgt_vel">—</td><td id="sm_x2">—</td></tr>
+                    <tr><td style="padding:5px;text-align:left">Pitch (rad)</td><td id="sm_cur_pitch">—</td><td id="sm_tgt_pitch">—</td><td id="sm_x3">—</td></tr>
+                    <tr style="background:#2a2a2a"><td style="padding:5px;text-align:left">Gyro (rad/s)</td><td id="sm_cur_gyro">—</td><td id="sm_tgt_gyro">—</td><td id="sm_x4">—</td></tr>
+                    <tr><td style="padding:5px;text-align:left">Yaw (rad)</td><td id="sm_yaw_rad">—</td><td id="sm_yaw_ref">0.000</td><td id="sm_yaw_e">—</td></tr>
+                </tbody>
+            </table>
+            <div class="profile-info" style="margin-top:8px">Trajectory setpoint: <span id="sm_pos_sp">—</span> m</div>
+        </div>
     </div>
 
     <button onclick="resetErrors()">Reset Position (X1)</button>
@@ -117,6 +145,13 @@ const char index_html[] PROGMEM = R"rawliteral(
             'K3=59.79  K4=2.77  offset=−0.070',
             'K3=61.00  K4=4.00  offset= 0.000',
         ];
+        // [K1, K2, K3, K4] per profile
+        var profileGains = [
+            [-8.0, -10.0, 52.07, 4.00],
+            [-8.0, -12.0, 56.60, 4.00],
+            [-10.0, -15.0, 59.79, 2.77],
+            [-8.0, -13.0, 61.00, 4.00],
+        ];
 
         function initWebSocket() {
             websocket = new WebSocket(gateway);
@@ -128,6 +163,41 @@ const char index_html[] PROGMEM = R"rawliteral(
                 document.getElementById('status').textContent = 'DISCONNECTED';
                 document.getElementById('status').style.color = '#FF0000';
                 setTimeout(initWebSocket, 2000);
+            };
+            websocket.onmessage = (event) => {
+                var d = {};
+                event.data.trim().split(' ').forEach(p => {
+                    var i = p.indexOf(':');
+                    if (i > 0) d[p.slice(0, i)] = parseFloat(p.slice(i + 1));
+                });
+                function upd(id, val, dec) {
+                    var el = document.getElementById(id);
+                    if (el && !isNaN(val)) el.textContent = val.toFixed(dec !== undefined ? dec : 3);
+                }
+                upd('sm_cur_pos',   d.cur_pos,   3);
+                upd('sm_tgt_pos',   d.tgt_pos,   3);
+                upd('sm_pos_sp',    d.pos_sp,    3);
+                upd('sm_x1',        d.x1,        3);
+                upd('sm_cur_vel',   d.cur_vel,   3);
+                upd('sm_tgt_vel',   d.tgt_vel,   3);
+                upd('sm_x2',        d.x2,        3);
+                upd('sm_cur_pitch', d.cur_pitch, 4);
+                upd('sm_tgt_pitch', d.tgt_pitch, 4);
+                upd('sm_x3',        d.x3,        4);
+                upd('sm_cur_gyro',  d.cur_gyro,  3);
+                upd('sm_tgt_gyro',  d.tgt_gyro,  3);
+                upd('sm_x4',        d.x4,        3);
+                upd('sm_yaw_rad',   d.yaw_rad,   3);
+                upd('sm_yaw_e',     d.yaw_e,     3);
+                if (!isNaN(d.yaw_rad)) {
+                    currentYawDeg = d.yaw_rad * 180 / Math.PI;
+                    var hEl = document.getElementById('yawHeading');
+                    if (hEl) hEl.textContent = currentYawDeg.toFixed(1);
+                }
+                if (!isNaN(d.yaw_e)) {
+                    var eEl = document.getElementById('yawErrDeg');
+                    if (eEl) eEl.textContent = (d.yaw_e * 180 / Math.PI).toFixed(1);
+                }
             };
         }
 
@@ -152,6 +222,12 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('valO').value = currentOffset.toFixed(3);
             document.getElementById('offsetDisplay').textContent =
                 'offset = ' + currentOffset.toFixed(3) + ' rad';
+            // populate K1–K4 inputs
+            var g = profileGains[idx];
+            document.getElementById('valK1').value = g[0];
+            document.getElementById('valK2').value = g[1];
+            document.getElementById('valK3').value = g[2];
+            document.getElementById('valK4').value = g[3];
         }
 
         // ── Offset control ─────────────────────────────────────────────────────
@@ -178,7 +254,31 @@ const char index_html[] PROGMEM = R"rawliteral(
         }
 
         // ── Yaw control ───────────────────────────────────────────────────────
-        var yawEnabled = true;
+        var yawEnabled  = true;
+        var currentYawDeg = 0;
+        var targetYawDeg  = 0;
+
+        function syncYawRefDisplay() {
+            document.getElementById('valTY').value = targetYawDeg.toFixed(1);
+            document.getElementById('yawRef').textContent = targetYawDeg.toFixed(1);
+            var refRad = targetYawDeg * Math.PI / 180;
+            document.getElementById('sm_yaw_ref').textContent = refRad.toFixed(3);
+        }
+
+        function setYaw() {
+            targetYawDeg = parseFloat(document.getElementById('valTY').value) || 0;
+            syncYawRefDisplay();
+            fetch('/set?type=TY&val=' + (targetYawDeg * Math.PI / 180))
+                .catch(err => console.log('Set yaw failed:', err));
+        }
+
+        function nudgeYaw(delta) {
+            targetYawDeg = Math.round((targetYawDeg + delta) * 10) / 10;
+            syncYawRefDisplay();
+            fetch('/set?type=TY&val=' + (targetYawDeg * Math.PI / 180))
+                .catch(err => console.log('Nudge yaw failed:', err));
+        }
+
         function toggleYaw() {
             yawEnabled = !yawEnabled;
             fetch('/set?type=YE&val=' + (yawEnabled ? 1 : 0))
@@ -186,8 +286,11 @@ const char index_html[] PROGMEM = R"rawliteral(
             document.getElementById('yawToggleBtn').textContent = 'Yaw: ' + (yawEnabled ? 'ON' : 'OFF');
             document.getElementById('yawInfo').textContent = yawEnabled ? 'Heading hold active' : 'Heading hold disabled';
         }
+
         function lockHeading() {
-            fetch('/set?type=YR&val=0')   // firmware snaps yaw_ref = yaw_angle
+            targetYawDeg = currentYawDeg;   // snap JS state to current heading
+            syncYawRefDisplay();
+            fetch('/set?type=YR&val=0')     // firmware snaps yaw_ref = currentState.yaw_rad
                 .catch(err => console.log('Lock heading failed:', err));
             document.getElementById('yawInfo').textContent = 'Heading locked to current';
         }
@@ -226,27 +329,34 @@ void setupWebServer() {
             if      (type == "P")  applyProfile((int)val);    // by index
 
             // ── Offset trim (only per-session tunable value) ───────────────
-            else if (type == "O")  angle_offset = val;
+            else if (type == "O")  rad_offset = val;
+
+            // ── K1–K4 live gain tuning ─────────────────────────────────────
+            else if (type == "K1") K1 = val;
+            else if (type == "K2") K2 = val;
+            else if (type == "K3") K3 = val;
+            else if (type == "K4") K4 = val;
 
             // ── Yaw control ────────────────────────────────────────────────
             else if (type == "YE") yaw_enabled = (bool)(int)val;
-            else if (type == "YR") yaw_ref     = yaw_angle;  // lock current heading
+            else if (type == "YR") yaw_ref     = currentState.yaw_rad;  // lock current heading
+            else if (type == "TY") yaw_ref     = val;                   // set absolute target yaw (rad)
 
             // ── Target state ───────────────────────────────────────────────
             else if (type == "TP") target.position    = val;
             else if (type == "TV") target.velocity    = val;
-            else if (type == "TA") target.pitch_angle = val;
+            else if (type == "TA") target.pitch_rad = val;
             else if (type == "TG") target.gyro_rate   = val;
         }
         request->send(200);
     });
 
-    // /reset — snap position reference and zero targets
+    // /reset — return to origin; trajectory ramps smoothly from current pos_setpoint
     server.on("/reset", HTTP_GET, [](AsyncWebServerRequest *request) {
-        position_offset = get_average_distance_meters();
         target.position = 0.0f;
         target.velocity = 0.0f;
-        yaw_ref = yaw_angle;
+        position_offset = 0.0f;   // clear drift so x1 is clean during return trip
+        yaw_ref = currentState.yaw_rad;
         request->send(200);
     });
 

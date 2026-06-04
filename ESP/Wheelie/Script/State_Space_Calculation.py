@@ -25,16 +25,14 @@ SERVO_DEG = 25   # operating angle (°) — CoG height is calculated automatical
 # Higher Q_i → stronger correction for that state.
 # Raise R_EFFORT to scale all gains down (less aggressive).
 #
-# Calibrated defaults (Q_POSITION=320, R=5) → K1=-8 at every servo angle.
 # K3 and K4 increase naturally as servo angle rises (higher CoG = more unstable).
 # K2 from this model is small (~-1); hardware may need K2 more negative (e.g. -10 to -15)
 # — tune K2 manually on the robot if it drifts in velocity.
 Q_POSITION   = 320.0   # x1 — wheel position   (m)   → sets K1 magnitude
-Q_VELOCITY   = 300.0   # x2 — wheel velocity   (m/s) → sets K2 (model underestimates; tune manually)
-Q_PITCH      =   1.0   # x3 — pitch angle      (rad) → leave unchanged
+Q_VELOCITY   = 200.0   # x2 — wheel velocity   (m/s) → sets K2 (model underestimates; tune manually)
+Q_PITCH      =   30.0   # x3 — pitch angle      (rad) → leave unchanged
 Q_PITCH_RATE =   8.0   # x4 — pitch rate       (rad/s)
-R_EFFORT     =   5.0   # control effort penalty (5 → K3≈52, K4≈2.2 at servo=25°)
-
+R_EFFORT     =   5.0   # control effort penalty
 # ╔══════════════════════════════════════════════════════════════╗
 # ║       SECTION 1b: PHYSICAL PARAMETERS — measure once        ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -45,8 +43,8 @@ WHEEL_RADIUS_M = 0.026    # wheel radius (m)
 
 # Moment of inertia via physical pendulum:
 #   Hang body from pivot at distance d above CoM, time 20 full swings → T
-PENDULUM_PIVOT_M  = 0.036   # d — pivot-to-CoM distance (m)
-PENDULUM_PERIOD_S = 0.43    # T — period of one full swing (s)
+PENDULUM_PIVOT_M  = 0.3   # d — pivot-to-CoM distance (m)
+PENDULUM_PERIOD_S = 1.15    # T — period of one full swing (s)
 
 # Motor drive constants (empirical, validated on hardware — 2804 gimbal, both wheels)
 Cm1 = 0.02989      # net force per volt        (N/V)
@@ -138,3 +136,8 @@ if warnings:
 print()
 print(f"  Q = diag([{Q_POSITION}, {Q_VELOCITY}, {Q_PITCH}, {Q_PITCH_RATE}])   R = {R_EFFORT}")
 print()
+print(f"lb    = {lb}")        # must be 0.050, not 50
+print(f"Jb    = {Jb}")        # must be 0.00429
+print(f"J_eff = {J_eff}")     # should be 0.005550
+print(f"D     = {D}")         # should be 0.002186
+print(f"C4/C2 = {C4/C2}")     # should be 4.54

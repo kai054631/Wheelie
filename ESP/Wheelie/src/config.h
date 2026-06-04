@@ -18,14 +18,14 @@
 #define WHEEL_BASE_M   0.16f    // distance between wheel contact points (m) — tune if yaw is reversed
 
 // --- 全局变量声明 ---
-extern float angle_offset;
-extern volatile float Pitch_angle, Pitch_gyro;
+extern float rad_offset;
+extern volatile float Pitch_rad, Pitch_gyro;
 extern volatile float shared_motor_voltage_L, shared_motor_voltage_R;
 extern int Servo_angle;
 
 struct Profile {
     int   servo_angle;
-    float angle_offset;
+    float rad_offset;
     float K1, K2, K3, K4, K5, K6;
 };
 
@@ -36,8 +36,10 @@ struct RobotState
 {
     float position;
     float velocity;
-    float pitch_angle;
+    float pitch_rad;
     float gyro_rate;
+    float yaw_rad;     // psi (rad), integrated from wheel differential
+    float yaw_rate;    // psi_dot (rad/s)
 };
 
 extern float K1;   // wheel position feedback
@@ -50,13 +52,18 @@ extern float K6;   // yaw rate gain    (psi_dot)
 extern float x1, x2, x3, x4;
 
 extern float position_offset;
+extern float pos_setpoint;
+extern float vel_ff_ramp;
+extern RobotState currentState;
 extern RobotState target;
 
 // yaw state
-extern float yaw_angle;    // psi (rad), integrated from wheel differential
-extern float yaw_rate;     // psi_dot (rad/s)
-extern float yaw_ref;      // heading setpoint (rad)
-extern bool  yaw_enabled;  // heading-hold on/off
+
+extern float yaw_ref;     // heading setpoint (rad)
+extern bool  yaw_enabled; // heading-hold on/off
+extern float yaw_e;       // yaw angle error (psi - psi_ref)
+extern float yaw_differ;  // raw wheel velocity difference (motorR - motorL, rad/s)
+extern float yaw_mpu;     // MPU gyro-Z reading (deg/s)
 
 extern float average_speed;
 
