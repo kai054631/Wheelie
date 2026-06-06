@@ -5,7 +5,6 @@ volatile float Pitch_rad = 0.0, Pitch_gyro = 0.0;
 volatile float shared_motor_voltage_L = 0.0;
 volatile float shared_motor_voltage_R = 0.0;
 
-float pitch_comp=0.0;
 RobotState currentState;
 RobotState target = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
 
@@ -108,12 +107,12 @@ void TaskBalanceCode(void *pv)
   {
     mpu.update();
     Pitch_rad = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt);
-    // pitch_comp=0.01f*mpu.getAngleX()+0.99f*pitch_comp;
+
     // Gyro LPF: weight the *old* value lightly (0.05). A heavier old-value weight
     // adds lag to the rate term (K4) and made balancing less stable, so we keep
     // most of the fresh sample. See handoff §6.1.
     static float gyro_filtered = 0.0f;
-    gyro_filtered = 0.95f *(mpu.getAccAngleY()+ mpu.getGyroY() *dt)+ 0.05f * mpu.getAccAngleY();
+    gyro_filtered = 0.95f * mpu.getGyroY() + 0.05f * gyro_filtered;
     Pitch_gyro = gyro_filtered;
 
     currentState.position  = get_average_distance_meters();
@@ -156,7 +155,6 @@ void TaskServoCode(void *pvParameters)
 
     LeftServo.write(180 - servo_angle);
     RightServo.write(right_angle);
-   
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
@@ -188,8 +186,6 @@ void TaskMonitorCode(void *pv)
              K1, K2, K3, K4, K5, K6, rad_offset, active_profile,
              motorL.shaftVelocity(), motorR.shaftVelocity(),
              mpu.getTemp());
-
-    // printf("Pitch complementary: %.4f\n", mpu.getAngleY()* (PI / 180.0f));
     ws.cleanupClients();
     ws.textAll(buffer);
 

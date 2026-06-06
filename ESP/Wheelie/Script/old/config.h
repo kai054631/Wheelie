@@ -15,11 +15,7 @@
 #define SERVO_R_PIN 5
 
 #define WHEEL_RADIUS_M 0.026f   // wheel radius (m)
-#define WHEEL_BASE_M   0.183f   // track width: distance between wheel contact points (m)
-
-// --- Optional Xbox (BLE) controller ---------------------------------------
-// Comment this out to build the firmware without controller support.
-// #define USE_XBOX_CONTROLLER 1
+#define WHEEL_BASE_M   0.16f    // distance between wheel contact points (m) — tune if yaw is reversed
 
 // --- 全局变量声明 ---
 extern float rad_offset;
@@ -58,7 +54,6 @@ extern float x1, x2, x3, x4;
 extern float position_offset;
 extern float pos_setpoint;
 extern float vel_ff_ramp;
-extern float pitch_comp;
 extern RobotState currentState;
 extern RobotState target;
 
@@ -68,7 +63,7 @@ extern float yaw_ref;     // heading setpoint (rad)
 extern bool  yaw_enabled; // heading-hold on/off
 extern float yaw_e;       // yaw angle error (psi - psi_ref)
 extern float yaw_differ;  // raw wheel velocity difference (motorR - motorL, rad/s)
-extern float yaw_mpu;     // MPU gyro-Z reading (rad/s) — monitoring only
+extern float yaw_mpu;     // MPU gyro-Z reading (deg/s)
 
 extern float average_speed;
 
@@ -95,9 +90,5 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
 float compute_yaw_voltage(float psi, float psi_dot, float psi_ref);
 float get_average_distance_meters();
 float get_average_velocity_mps();
-
-#ifdef USE_XBOX_CONTROLLER
-void TaskControllerCode(void *pv);   // defined in controller.cpp
-#endif
 
 #endif

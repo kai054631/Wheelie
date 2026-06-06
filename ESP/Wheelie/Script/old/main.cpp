@@ -5,7 +5,6 @@ volatile float Pitch_rad = 0.0, Pitch_gyro = 0.0;
 volatile float shared_motor_voltage_L = 0.0;
 volatile float shared_motor_voltage_R = 0.0;
 
-float pitch_comp=0.0;
 RobotState currentState;
 RobotState target = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}; // 目标状态：位置0，速度0，倾斜角0，陀螺仪角速度0
 
@@ -50,32 +49,18 @@ void TaskMotorCode(void *pv)
   delay(1000); // 等待系统稳定
   motorL.initFOC();
   motorR.initFOC();
-
-  // Airborne detection (wheels lifted off the ground).
-  // A simple velocity threshold of 40 rad/s was too low: at 0.8 m/s forward the
-  // wheel-speed sum is already ~61 rad/s, so it false-triggered while driving.
-  // When the robot is lifted, the (near-) unloaded wheels free-spin far above any
-  // achievable ground speed, so we set the threshold well above ground cruise and
-  // require the condition to persist (debounce) to reject noise.
-  const float AIRBORNE_VEL_SUM = 90.0f;   // rad/s, |velL|+|velR| (>> 0.8 m/s ground)
-  const uint8_t AIRBORNE_DEBOUNCE = 20;   // ticks @1 kHz ≈ 20 ms sustained
-  uint8_t airborne_count = 0;
-
+  // printf("Motor L Zero Electric Angle: %.2f, Sensor Direction: %d\n", motorL.zero_electric_angle, motorL.sensor_direction);
+  // printf("Motor R Zero Electric Angle: %.2f, Sensor Direction: %d\n", motorR.zero_electric_angle, motorR.sensor_direction);
   TickType_t xLastWakeTime = xTaskGetTickCount();
   for (;;)
   {
-    float pitch_err = fabs(currentState.pitch_rad - rad_offset);
-    bool  fallen    = pitch_err > 0.4f;
+    bool fallen   = abs(currentState.pitch_rad - rad_offset) > 0.4f;
+    bool airborne = (abs(motorL.shaftVelocity()) + abs(motorR.shaftVelocity())) > 40.0f
+                    && abs(currentState.pitch_rad - rad_offset) < 0.08f;
 
-    // Free-spin + near-upright => almost certainly lifted off the ground.
-    bool airborne_now = ((fabs(motorL.shaftVelocity()) + fabs(motorR.shaftVelocity())) > AIRBORNE_VEL_SUM)
-                        && (pitch_err < 0.08f);
-    if (airborne_now) { if (airborne_count < 255) airborne_count++; }
-    else if (airborne_count > 0) airborne_count--;
-    bool airborne = airborne_count >= AIRBORNE_DEBOUNCE;
-
-    if (fallen || airborne)
+    if (fallen)// || airborne)
     {
+      // Only call disable if the motor is currently running
       if (motorL.enabled)
       {
         motorL.disable();
@@ -84,9 +69,10 @@ void TaskMotorCode(void *pv)
     }
     else
     {
-      // Execute the space-vector phase updates at 1 kHz
+      // Execute the space-vector phase updates at 1kHz
       motorL.loopFOC();
       motorR.loopFOC();
+      // ONLY enable if they were previously cut off by a fall event
       if (!motorL.enabled)
       {
         motorL.enable();
@@ -102,42 +88,40 @@ void TaskMotorCode(void *pv)
 // --- 任务：姿态计算 + 偏航控制 (Core 0) ---
 void TaskBalanceCode(void *pv)
 {
-  const float dt = 0.005f;     // 200 Hz fixed cadence (matches vTaskDelayUntil below)
-  TickType_t xLastWakeTime = xTaskGetTickCount();
+  unsigned long lastTime = millis();
   for (;;)
   {
     mpu.update();
+    unsigned long now = millis();
+    float dt = (now - lastTime) / 1000.0f;
+    lastTime = now;
     Pitch_rad = kalmanUpdate(mpu.getAngleY(), mpu.getGyroY(), dt);
-    // pitch_comp=0.01f*mpu.getAngleX()+0.99f*pitch_comp;
-    // Gyro LPF: weight the *old* value lightly (0.05). A heavier old-value weight
-    // adds lag to the rate term (K4) and made balancing less stable, so we keep
-    // most of the fresh sample. See handoff §6.1.
     static float gyro_filtered = 0.0f;
-    gyro_filtered = 0.95f *(mpu.getAccAngleY()+ mpu.getGyroY() *dt)+ 0.05f * mpu.getAccAngleY();
+    gyro_filtered = 0.95f * mpu.getGyroY() + 0.05f * gyro_filtered;
     Pitch_gyro = gyro_filtered;
 
-    currentState.position  = get_average_distance_meters();
-    currentState.velocity  = get_average_velocity_mps();
+    currentState.position = get_average_distance_meters();
+    currentState.velocity = get_average_velocity_mps();
     currentState.pitch_rad = Pitch_rad * (PI / 180.0f);
     currentState.gyro_rate = Pitch_gyro * (PI / 180.0f);
 
     // yaw rate from wheel speed differential; positive => turning left (CCW from above)
-    currentState.yaw_rate = constrain((motorR.shaftVelocity() - motorL.shaftVelocity())
-                                      * WHEEL_RADIUS_M / WHEEL_BASE_M, -6.28f, 6.28f);
+    currentState.yaw_rate = (constrain((motorR.shaftVelocity() - motorL.shaftVelocity()) * WHEEL_RADIUS_M / WHEEL_BASE_M,-6.28,6.28))
+    ; // combine wheel-based yaw rate with gyro Z for better accuracy
     currentState.yaw_rad += currentState.yaw_rate * dt;
 
-    float v  = compute_LQR_balancing_voltage(currentState, target, rad_offset);
+    float v = compute_LQR_balancing_voltage(currentState, target, rad_offset);
     float dv = compute_yaw_voltage(currentState.yaw_rad, currentState.yaw_rate, yaw_ref);
 
-    // u_L = v + dv,  u_R = v - dv   (sign verified on this robot — turns correct way)
-    shared_motor_voltage_L = v + dv;
+    // u_L = v - dv,  u_R = v + dv
+    shared_motor_voltage_L = v +   dv;
     shared_motor_voltage_R = v - dv;
 
-    vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(5));
+    vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
 
-// --- 任务：Servo 控制 (Core 0) ---  (unchanged)
+// --- 任务：Servo 控制 (Core 0) ---
 void TaskServoCode(void *pvParameters)
 {
   static int servo_angle = 60; // persist across iterations; start at a safe mid-range angle
@@ -156,7 +140,6 @@ void TaskServoCode(void *pvParameters)
 
     LeftServo.write(180 - servo_angle);
     RightServo.write(right_angle);
-   
     vTaskDelay(100 / portTICK_PERIOD_MS);
   }
 }
@@ -164,47 +147,80 @@ void TaskServoCode(void *pvParameters)
 // --- 任务：监控 (Core 0) ---
 void TaskMonitorCode(void *pv)
 {
-  char buffer[768];
+  char buffer[600];
   for (;;)
   {
     snprintf(buffer, sizeof(buffer),
-             "x1:%.3f x2:%.3f x3:%.4f x4:%.3f "
+             "meter_error:%.2f x1:%.3f x2:%.3f x3:%.4f x4:%.3f "
              "cur_pos:%.3f tgt_pos:%.3f pos_sp:%.3f "
              "cur_vel:%.3f tgt_vel:%.3f vel_ff:%.3f "
              "cur_pitch:%.4f tgt_pitch:%.4f "
              "cur_gyro:%.3f tgt_gyro:%.3f "
-             "Voltage:%.2f VL:%.2f VR:%.2f "
-             "yaw_rad:%.3f yaw_rate:%.3f yaw_ref:%.3f yaw_e:%.3f yaw_mpu:%.3f "
-             "K1:%.2f K2:%.2f K3:%.2f K4:%.2f K5:%.3f K6:%.3f offset:%.3f profile:%d "
+             "Pitch_Rad:%.3f Voltage:%.2f VL:%.2f VR:%.2f "
+             "yaw_rad:%.3f yaw_rate:%.3f yaw_e:%.3f yaw_mpu:%.3f "
              "Left_Velocity:%.2f Right_Velocity:%.2f Temp:%.1f\n",
+             currentState.pitch_rad - rad_offset,
              x1, x2, x3, x4,
              currentState.position,  target.position,   pos_setpoint,
-             currentState.velocity,  target.velocity,   vel_ff_ramp,
+             currentState.velocity,  target.velocity, vel_ff_ramp,
              currentState.pitch_rad, rad_offset + target.pitch_rad,
              currentState.gyro_rate, target.gyro_rate,
+             currentState.pitch_rad - rad_offset,
              (shared_motor_voltage_L + shared_motor_voltage_R) * 0.5f,
              shared_motor_voltage_L, shared_motor_voltage_R,
-             currentState.yaw_rad, currentState.yaw_rate, yaw_ref, yaw_e, yaw_mpu,
-             K1, K2, K3, K4, K5, K6, rad_offset, active_profile,
+             currentState.yaw_rad, currentState.yaw_rate,
+             yaw_e, yaw_mpu,
              motorL.shaftVelocity(), motorR.shaftVelocity(),
              mpu.getTemp());
-
-    // printf("Pitch complementary: %.4f\n", mpu.getAngleY()* (PI / 180.0f));
     ws.cleanupClients();
     ws.textAll(buffer);
+    // Serial.print(buffer);
 
     vTaskDelay(pdMS_TO_TICKS(100)); // 每100ms更新一次网页监视器
   }
 }
 
+// void TaskcontrolCode(void *pv)
+// {
+//   //Task for reading serial input and updating control parameters
+//   for (;;)
+//   {
+//     if (Serial.available()){
+//       switch (Serial.read())
+//       {
+//       case '1':
+//         applyProfile(0);
+//         break;
+//       case '2':
+//         applyProfile(1);
+//         break;
+//       case '3':
+//         applyProfile(2);
+//         break;
+//       case '4':
+//         applyProfile(3);
+//         break;
+//       }
+
+//     }
+//   }
+// }
 void setup()
 {
   Serial.begin(115200);
   // MPU6050
+  // delay(2000); // wait for MPU6050 to power up before I2C init
   Wire.begin(I2C_SDA, I2C_SCL, 400000);
   mpu.begin();
-  mpu.setGyroOffsets(-1.484977, -0.755755, -2.337404);
+  mpu.setGyroOffsets(-1.484977, -0.755755, -2.337404); // old values — board position changed
   mpu.setAccOffsets(-0.003804, -0.074246, 0.216630);
+  // mpu.calcOffsets(true, true); // recalibrate for new battery spacer position
+  // printf("Gyro X offset: %f\n", mpu.getGyroXoffset());
+  // printf("Gyro Y offset: %f\n", mpu.getGyroYoffset());
+  // printf("Gyro Z offset: %f\n", mpu.getGyroZoffset());
+  // printf("Acc X offset: %f\n", mpu.getAccXoffset());
+  // printf("Acc Y offset: %f\n", mpu.getAccYoffset());
+  // printf("Acc Z offset: %f\n", mpu.getAccZoffset());
 
   // 电机基础初始化 (不包含阻塞的 initFOC)
   encoderL.init();
@@ -228,7 +244,7 @@ void setup()
   motorR.controller = MotionControlType::torque;
   motorR.voltage_sensor_align = 5;
   motorR.init();
-
+  
   // Servo
   LeftServo.setup(SERVO_L_PIN, 1000, 2000);
   RightServo.setup(SERVO_R_PIN, 1000, 2000);
@@ -237,13 +253,12 @@ void setup()
 
   // 创建任务 (注意优先级：电机最高)
   applyProfile(0);
-  xTaskCreatePinnedToCore(TaskMotorCode,   "MotorTask",   10000, NULL, 3, NULL, 1);
+  xTaskCreatePinnedToCore(TaskMotorCode, "MotorTask", 10000, NULL, 3, NULL, 1);
   xTaskCreatePinnedToCore(TaskBalanceCode, "BalanceTask", 10000, NULL, 2, NULL, 0);
-  xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask",  5000, NULL, 1, NULL, 0);
-  xTaskCreatePinnedToCore(TaskServoCode,   "ServoTask",    5000, NULL, 1, NULL, 0);
-#ifdef USE_XBOX_CONTROLLER
-  xTaskCreatePinnedToCore(TaskControllerCode, "CtrlTask",  8000, NULL, 1, NULL, 0);
-#endif
-}
+  xTaskCreatePinnedToCore(TaskMonitorCode, "MonitorTask", 5000, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(TaskServoCode, "ServoTask", 5000, NULL, 1, NULL, 0);
+  // xTaskCreatePinnedToCore(TaskcontrolCode, "ControlTask", 5000, NULL, 1, NULL, 0);
 
+  
+}
 void loop() {}

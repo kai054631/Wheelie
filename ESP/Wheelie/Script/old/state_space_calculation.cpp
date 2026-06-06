@@ -42,11 +42,10 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   const float DEFAULT_SPEED = 0.15f;
   const float MAX_ACCEL = 0.4f;   // m/s² — limits how fast vel_ff_ramp changes
 
-  // Traversal speed = commanded target velocity magnitude (or a gentle default).
-  // NOTE: the yaw channel is fully decoupled (added later as ±dv), so we do NOT
-  // slow forward motion while turning — that previously made the robot "stop and
-  // turn". Forward speed is now held; the ±2 V dv clamp protects the balancer.
   float trav_speed = (fabs(target.velocity) > 0.005f) ? fabs(target.velocity) : DEFAULT_SPEED;
+  // Reduce traversal speed proportionally when yaw is actively correcting
+  float yaw_scale = 1.0f - constrain(fabs(yaw_e) / 0.3f, 0.0f, 0.6f);
+  trav_speed *= yaw_scale;
 
   // Trapezoidal profile: decelerate early enough to stop at target
   float pos_err = target.position - pos_setpoint;
@@ -88,9 +87,9 @@ float compute_yaw_voltage(float psi, float psi_dot, float psi_ref)
 {
   if (!yaw_enabled)
     return 0.0f;
-  yaw_mpu = mpu.getGyroZ() * (PI / 180.0f); // monitoring only; gyro-Z fusion not used (see handoff §4.4)
+  yaw_mpu = mpu.getGyroZ() * (PI / 180.0f); // monitoring only; sign matches currentState.yaw_rate
   yaw_e = psi - psi_ref;
-  float dv = -(K5 * yaw_e + K6 * psi_dot); // K5 = yaw-angle gain, K6 = yaw-rate gain
+  float dv = -(K5 * yaw_e + K6 * psi_dot); // use fused yaw_rate (wheel diff + gyroZ)
 
   return constrain(dv, -YAW_DV_LIMIT, YAW_DV_LIMIT);
 }

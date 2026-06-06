@@ -19,7 +19,7 @@
 
 // --- Optional Xbox (BLE) controller ---------------------------------------
 // Comment this out to build the firmware without controller support.
-// #define USE_XBOX_CONTROLLER 1
+#define USE_XBOX_CONTROLLER 1
 
 // --- 全局变量声明 ---
 extern float rad_offset;
@@ -58,7 +58,6 @@ extern float x1, x2, x3, x4;
 extern float position_offset;
 extern float pos_setpoint;
 extern float vel_ff_ramp;
-extern float pitch_comp;
 extern RobotState currentState;
 extern RobotState target;
 
