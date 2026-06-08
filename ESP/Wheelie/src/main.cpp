@@ -67,14 +67,14 @@ void TaskMotorCode(void *pv)
     float pitch_err = fabs(currentState.pitch_rad - rad_offset);
     bool  fallen    = pitch_err > 0.4f;
 
-    // Free-spin + near-upright => almost certainly lifted off the ground.
-    bool airborne_now = ((fabs(motorL.shaftVelocity()) + fabs(motorR.shaftVelocity())) > AIRBORNE_VEL_SUM)
-                        && (pitch_err < 0.08f);
-    if (airborne_now) { if (airborne_count < 255) airborne_count++; }
-    else if (airborne_count > 0) airborne_count--;
-    bool airborne = airborne_count >= AIRBORNE_DEBOUNCE;
+    // // Free-spin + near-upright => almost certainly lifted off the ground.
+    // bool airborne_now = ((fabs(motorL.shaftVelocity()) + fabs(motorR.shaftVelocity())) > AIRBORNE_VEL_SUM)
+    //                     && (pitch_err < 0.08f);
+    // if (airborne_now) { if (airborne_count < 255) airborne_count++; }
+    // else if (airborne_count > 0) airborne_count--;
+    // bool airborne = airborne_count >= AIRBORNE_DEBOUNCE;
 
-    if (fallen || airborne)
+    if (fallen)// || airborne)
     {
       if (motorL.enabled)
       {
@@ -140,11 +140,11 @@ void TaskBalanceCode(void *pv)
 // --- 任务：Servo 控制 (Core 0) ---  (unchanged)
 void TaskServoCode(void *pvParameters)
 {
-  static int servo_angle = 60; // persist across iterations; start at a safe mid-range angle
+  static int servo_angle = 25; // persist across iterations; start at a safe mid-range angle
   for (;;)
   {
     int target_angle = constrain(Servo_angle, 20, 100);
-    int step = 5;
+    int step = 2;
     if (abs(target_angle - servo_angle) <= step) {
       servo_angle = target_angle;
     } else {
