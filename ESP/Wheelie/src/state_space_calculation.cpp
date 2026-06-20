@@ -1,7 +1,7 @@
 #include "config.h"
 
 Profile profile_list[] = {
-    {25, -0.29f, -8.0f, -10.0f, 52.07f, 2.40f, 1.5f, 0.343f},
+    {25, -0.27f, -8.0f, -10.0f, 52.07f, 2.40f, 1.5f, 0.343f},
     {45, -0.19f, -8.0f, -12.0f, 56.60f, 2.4f, 1.5f, 0.343f},
     {65, -0.12f, -10.0f, -15.0f, 59.79f, 2.77f, 1.5f, 0.343f},
     {85, -0.11f, -8.0f, -13.0f, 61.00f, 4.00f, 1.5f, 0.343f},
@@ -71,7 +71,7 @@ float compute_LQR_balancing_voltage(RobotState current, RobotState target, float
   pos_setpoint += vel_ff_ramp * dt;
 
   // Slow integrator — corrects steady-state position drift over ~20 s
-  const float tau = 20.0f;
+  const float tau = 40.0f;
   position_offset += (current.position - pos_setpoint - position_offset) * (dt / tau);
 
   x1 = current.position - pos_setpoint - position_offset;

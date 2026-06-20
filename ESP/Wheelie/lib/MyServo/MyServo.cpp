@@ -3,6 +3,8 @@
 MyServo::MyServo(const char* name) {
     _name = name;
     _current_angle = 0;
+    _s_start = 0;
+    _s_end   = 0;
 }
 
 void MyServo::setup(int pin, int min_us, int max_us) {
@@ -19,17 +21,20 @@ void MyServo::write(int angle) {
     ledcWrite(_pin, pulse);
 }
 
-void MyServo::speedControl(int target_angle, float speed) {
-    while(abs(_current_angle - target_angle) > 0.5) {
-        if(_current_angle < target_angle) _current_angle += speed;
-        else _current_angle -= speed;
+void MyServo::speedControl(float targetAngle, float speed_deg_per_sec) {
+    const float dt = 0.1f;  // TaskServoCode calls every 100 ms
+    float maxStep = speed_deg_per_sec * dt;
+    float error   = targetAngle - _current_angle;
 
-        int us = map((int)_current_angle, 0, 180, _min_us, _max_us);
-        int pulse = (us * 4095) / 20000;
-        ledcWrite(_pin, pulse);
-        delay(20);
+    if (fabs(error) < 0.5f) {
+        _current_angle = targetAngle;
+    } else if (error > 0) {
+        _current_angle += min(maxStep, error);
+    } else {
+        _current_angle -= min(maxStep, -error);
     }
-    write(target_angle);
+
+    write(_current_angle);
 }
 
 void MyServo::debug() {

@@ -46,10 +46,6 @@ WHEEL_RADIUS_M = 0.026    # wheel radius (m)
 PENDULUM_PIVOT_M  = 0.3   # d — pivot-to-CoM distance (m)
 PENDULUM_PERIOD_S = 1.15    # T — period of one full swing (s)
 
-# Motor drive constants (empirical, validated on hardware — 2804 gimbal, both wheels)
-Cm1 = 0.02989      # net force per volt        (N/V)
-Cm2 = 0.001295    # back-EMF viscous damping  (N·s/m per V)
-
 # ╔══════════════════════════════════════════════════════════════╗
 # ║       SECTION 2: COMPUTATION — do not edit below            ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -72,28 +68,31 @@ Jw    = 0.5 * mw * R**2
 M_eff = mb + 2*mw + 2*Jw / R**2
 J_eff = mb * lb**2 + Jb
 D     = M_eff * J_eff - (mb * lb)**2
+KT  = 0.04334    # torque constant (N·m/A) — from KV=220 via Kt = 60/(2π·KV)
+RPH = 2.9        # phase resistance (Ω) — measured value (datasheet 2.55)
+Cm  = 2 * KT / (RPH * R)         # net force per volt (N/V)
+Cv  = 2 * KT**2 / (RPH * R**2)   # back-EMF viscous damping (N·s/m)
 
 # First-principles A/B coefficients derived from CoG height
 C1 = (mb**2) * g * lb**2 / D    # A[1,2] — pitch → linear accel coupling
-C2 = J_eff   / (D * R)          # A[1,1], A[1,3] — back-EMF scaling (translation)
+C2 = J_eff / D                  # used in A[1,1] = -C2*Cv,  B[1] = -C2*Cm
 C3 = M_eff * mb * g * lb / D    # A[3,2] — gravity (inverted pendulum instability)
-C4 = mb * lb / (D * R)          # A[3,1], A[3,3] — back-EMF scaling (rotation)
+C4 = mb * lb / D                # used in A[3,1] = +C4*Cv,  B[3] = -C4*Cm
+
 
 # State: x = [position(m), velocity(m/s), pitch(rad), pitch_rate(rad/s)]
 A = np.array([
-    [0,  1,              0,        0       ],
-    [0, -(C2*Cm2)/R,   -C1,     C2*Cm2    ],
-    [0,  0,              0,        1       ],
-    [0,  (C4*Cm2)/R,    C3,    -(C4*Cm2)  ],
+    [0,  1,        0,    0],
+    [0, -C2*Cv,   -C1,   0],
+    [0,  0,        0,    1],
+    [0,  C4*Cv,   C3,    0],
 ])
 
-# B[1] is negative: positive voltage drives wheels forward which registers as
-# decreasing encoder position in the firmware's sign convention.
 B = np.array([
-    [ 0         ],
-    [-C2 * Cm1  ],
-    [ 0         ],
-    [-C4 * Cm1  ],
+    [ 0       ],
+    [-C2 * Cm ],
+    [ 0       ],
+    [-C4 * Cm ],
 ])
 
 Q     = np.diag([Q_POSITION, Q_VELOCITY, Q_PITCH, Q_PITCH_RATE])

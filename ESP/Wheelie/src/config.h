@@ -8,7 +8,6 @@
 #include <ESPAsyncWebServer.h>
 #include <WiFi.h>
 
-// --- 引脚定义 ---
 #define I2C_SDA 2
 #define I2C_SCL 1
 #define SERVO_L_PIN 4
@@ -21,7 +20,6 @@
 // Comment this out to build the firmware without controller support.
 // #define USE_XBOX_CONTROLLER 1
 
-// --- 全局变量声明 ---
 extern float rad_offset;
 extern volatile float Pitch_rad, Pitch_gyro;
 extern volatile float shared_motor_voltage_L, shared_motor_voltage_R;
@@ -75,7 +73,6 @@ extern float average_speed;
 extern int  active_profile;
 extern void applyProfile(int idx);
 
-// --- 硬件对象声明 ---
 extern MPU6050 mpu;
 extern BLDCMotor motorL, motorR;
 extern BLDCDriver3PWM driverL, driverR;
@@ -84,7 +81,6 @@ extern MyServo LeftServo, RightServo;
 extern AsyncWebServer server;
 extern AsyncWebSocket ws;
 
-// --- 函数原型 ---
 float kalmanUpdate(float newAngle, float newRate, float dt);
 void doLA();
 void doLB();
