@@ -60,7 +60,7 @@ mb = BODY_MASS_KG
 mw = WHEEL_MASS_KG
 
 # CoG height from measured servo-angle data (R²=0.9993)
-lb = (1.385 * SERVO_DEG + 14.575) / 1000.0   # m
+lb = (1.385 * SERVO_DEG + 14.575) / 1000  # m
 
 # Moment of inertia about body CoM (physical pendulum formula)
 _d  = PENDULUM_PIVOT_M
