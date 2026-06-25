@@ -19,20 +19,26 @@ import control as ct
 # ║       SECTION 1: SERVO & LQR WEIGHTS — edit these           ║
 # ╚══════════════════════════════════════════════════════════════╝
 
-SERVO_DEG = 25   # operating angle (°) — CoG height is calculated automatically
+SERVO_DEG = 85   # operating angle (°) — CoG height is calculated automatically
 
 # LQR weights  [position, velocity, pitch, pitch_rate]
 # Higher Q_i → stronger correction for that state.
-# Raise R_EFFORT to scale all gains down (less aggressive).
+# Lower R_EFFORT → larger gains across the board.
 #
-# K3 and K4 increase naturally as servo angle rises (higher CoG = more unstable).
-# K2 from this model is small (~-1); hardware may need K2 more negative (e.g. -10 to -15)
-# — tune K2 manually on the robot if it drifts in velocity.
-Q_POSITION   = 320.0   # x1 — wheel position   (m)   → sets K1 magnitude
-Q_VELOCITY   = 200.0   # x2 — wheel velocity   (m/s) → sets K2 (model underestimates; tune manually)
-Q_PITCH      =   30.0   # x3 — pitch angle      (rad) → leave unchanged
-Q_PITCH_RATE =   8.0   # x4 — pitch rate       (rad/s)
-R_EFFORT     =   5.0   # control effort penalty
+# Weights below are back-calculated to reproduce the hardware-validated K values:
+#   servo=25: K1=-8.0  K3=52.07  K4=2.40
+#   servo=45: K1=-8.0  K3=56.60  K4=2.40
+#   servo=65: K1=-10.0 K3=59.79  K4=2.77
+#   servo=85: K1=-8.0  K3=61.00  K4=4.00
+#
+# K2 WARNING: the model always gives K2 > 0 regardless of Q/R.
+# The real robot needs K2 negative (e.g. -10 to -15) to resist velocity drift.
+# Always override K2 manually in the profile after running this script.
+Q_POSITION   =  64.6    # x1 — wheel position   (m)
+Q_VELOCITY   =   0.0    # x2 — velocity not modelled accurately; set K2 manually
+Q_PITCH      = 2951.3   # x3 — pitch angle      (rad)  — main balancing gain
+Q_PITCH_RATE =  10.0    # x4 — pitch rate       (rad/s)
+R_EFFORT     =   1.0    # control effort penalty
 # ╔══════════════════════════════════════════════════════════════╗
 # ║       SECTION 1b: PHYSICAL PARAMETERS — measure once        ║
 # ╚══════════════════════════════════════════════════════════════╝
@@ -68,26 +74,31 @@ Jw    = 0.5 * mw * R**2
 M_eff = mb + 2*mw + 2*Jw / R**2
 J_eff = mb * lb**2 + Jb
 D     = M_eff * J_eff - (mb * lb)**2
-KT  = 0.04334    # torque constant (N·m/A) — from KV=220 via Kt = 60/(2π·KV)
-RPH = 2.9        # phase resistance (Ω) — measured value (datasheet 2.55)
+
+KT  = 0.04334    # torque constant (N·m/A) — from KV=220 via Kt = 60/(2*pi*KV)
+RPH = 2.9        # phase resistance (Ohm) — measured value
 Cm  = 2 * KT / (RPH * R)         # net force per volt (N/V)
 Cv  = 2 * KT**2 / (RPH * R**2)   # back-EMF viscous damping (N·s/m)
 
 # First-principles A/B coefficients derived from CoG height
-C1 = (mb**2) * g * lb**2 / D    # A[1,2] — pitch → linear accel coupling
-C2 = J_eff / D                  # used in A[1,1] = -C2*Cv,  B[1] = -C2*Cm
+C1 = (mb**2) * g * lb**2 / D    # A[1,2] — pitch coupling
+C2 = J_eff / D                  # translation back-EMF scaling
 C3 = M_eff * mb * g * lb / D    # A[3,2] — gravity (inverted pendulum instability)
-C4 = mb * lb / D                # used in A[3,1] = +C4*Cv,  B[3] = -C4*Cm
-
+C4 = mb * lb / D                # rotation back-EMF scaling
 
 # State: x = [position(m), velocity(m/s), pitch(rad), pitch_rate(rad/s)]
+# A[1,3] = C2*Cv*R and A[3,3] = -C4*Cv*R are back-EMF cross-coupling terms
+# (pitch rate <-> wheel velocity coupling via motor). Dropping them changes the
+# LQR solution significantly — K3 drops from ~60 to ~23 and K2 flips sign.
 A = np.array([
-    [0,  1,        0,    0],
-    [0, -C2*Cv,   -C1,   0],
-    [0,  0,        0,    1],
-    [0,  C4*Cv,   C3,    0],
+    [0,  1,          0,          0        ],
+    [0, -C2*Cv,     -C1,      C2*Cv*R     ],
+    [0,  0,          0,          1        ],
+    [0,  C4*Cv,      C3,      -C4*Cv*R    ],
 ])
 
+# B[1] is negative: positive voltage drives wheels forward which registers as
+# decreasing encoder position in the firmware's sign convention.
 B = np.array([
     [ 0       ],
     [-C2 * Cm ],
