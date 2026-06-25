@@ -143,7 +143,7 @@ void TaskServoCode(void *pvParameters)
   {
     int target_angle = constrain(Servo_angle, 20, 100);
 
-    int right_trim  = (int)roundf(0.08f * target_angle);
+    int right_trim  = (int)roundf(0.06f * target_angle - 1.3f);
     int right_angle = constrain(target_angle + right_trim, 20, 100);
 
     LeftServo.speedControl(180 - target_angle, SERVO_SPEED_DPS);

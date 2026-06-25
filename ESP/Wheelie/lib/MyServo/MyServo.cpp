@@ -21,6 +21,18 @@ void MyServo::write(int angle) {
     ledcWrite(_pin, pulse);
 }
 
+<<<<<<< HEAD
+void MyServo::speedControl(float target_angle, float speed_deg_per_sec) {
+    // Called once per control loop iteration — NOT a blocking while loop
+    float dt_ms   = 100.0f;                                    // your fixed 5 ms timestep
+    float maxStep = speed_deg_per_sec * (dt_ms / 1000.0f);
+    float error   = target_angle - _current_angle;
+
+    if (fabs(error) < 0.5f) {
+        _current_angle = target_angle;                        // snap — fixes int deadband bug
+    } else if (error > 0) {
+        _current_angle += min(maxStep, error);                // no overshoot
+=======
 void MyServo::speedControl(float targetAngle, float speed_deg_per_sec) {
     const float dt = 0.1f;  // TaskServoCode calls every 100 ms
     float maxStep = speed_deg_per_sec * dt;
@@ -30,6 +42,7 @@ void MyServo::speedControl(float targetAngle, float speed_deg_per_sec) {
         _current_angle = targetAngle;
     } else if (error > 0) {
         _current_angle += min(maxStep, error);
+>>>>>>> 6662f294770cbba4a175b56300adb4c09be57d73
     } else {
         _current_angle -= min(maxStep, -error);
     }
